@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -36,13 +37,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         style={{ background: '#2D5016', minHeight: '100vh' }}
       >
         {/* Logo */}
-        <div className="px-5 py-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-          <div className="text-xl font-bold">
-            <span style={{ color: '#81C784' }}>legu</span>
-            <span style={{ color: '#FF8A65' }}>frut</span>
-          </div>
-          <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            Panel Admin
+        <div className="px-5 py-5 border-b flex items-center gap-3" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+          <Image
+            src="/logo.png"
+            alt="LeguFrut"
+            width={40}
+            height={40}
+            style={{ objectFit: 'contain', flexShrink: 0 }}
+          />
+          <div>
+            <div className="text-base font-bold leading-tight">
+              <span style={{ color: '#81C784' }}>legu</span>
+              <span style={{ color: '#FF8A65' }}>frut</span>
+            </div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              Panel Admin
+            </div>
           </div>
         </div>
 
