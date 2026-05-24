@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import {
   collection, query, orderBy, onSnapshot,
-  getDocs, Timestamp,
+  getDocs, Timestamp, updateDoc, doc, serverTimestamp,
 } from 'firebase/firestore';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -15,15 +15,19 @@ interface OrderItem {
   unitPrice: number;
   pricePerKg: number;
   grams: number;
-  unitType: string; // 'Gramos' | 'Piezas'
+  unitType: string; // 'kg' | 'Gramos' | 'Piezas'
+  confirmedGrams?: number;
+  confirmedUnitPrice?: number;
 }
 
 interface Order {
   id: string;
+  userRef: string;
   nombrecliente: string;
   subtotal: number;
   shippingFee: number;
   total: number;
+  confirmedTotal?: number;
   status: string;
   driverTag: string;
   driverStatusText: string;
@@ -52,6 +56,7 @@ function statusColor(s: string, ds: string): { bg: string; fg: string; label: st
   if (ds === 'En camino') return { bg: '#E3F2FD', fg: '#1565C0', label: 'En camino' };
   if (ds === 'En preparación') return { bg: '#FFF3E0', fg: '#E65100', label: 'En preparación' };
   if (s === 'Reparto') return { bg: '#F3E5F5', fg: '#6A1B9A', label: 'En reparto' };
+  if (s === 'Confirmado') return { bg: '#E8F5E9', fg: '#2E7D32', label: '✓ Confirmado' };
   return { bg: '#F3F4F6', fg: '#374151', label: 'Pendiente' };
 }
 
@@ -244,11 +249,181 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
   );
 }
 
+// ── Confirmar Modal ────────────────────────────────────────────────────────
+
+function ConfirmarModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const [editedGrams, setEditedGrams] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const init: Record<string, string> = {};
+    order.items.forEach(item => {
+      init[item.id] = String(item.confirmedGrams ?? item.grams);
+    });
+    setEditedGrams(init);
+  }, [order.items]);
+
+  function isPieza(item: OrderItem) {
+    return item.unitType === 'Piezas';
+  }
+
+  function calcPrice(item: OrderItem, gramsStr: string) {
+    const g = parseFloat(gramsStr) || 0;
+    return isPieza(item) ? item.pricePerKg * g : item.pricePerKg * (g / 1000);
+  }
+
+  const confirmedSubtotal = order.items.reduce(
+    (s, item) => s + calcPrice(item, editedGrams[item.id] ?? String(item.grams)), 0
+  );
+  const confirmedTotal = confirmedSubtotal + order.shippingFee;
+
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      for (const item of order.items) {
+        const g = parseFloat(editedGrams[item.id]) || item.grams;
+        await updateDoc(doc(db, 'orders', order.id, 'ordersitems', item.id), {
+          confirmedGrams: g,
+          confirmedUnitPrice: calcPrice(item, String(g)),
+        });
+      }
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: 'Confirmado',
+        confirmedTotal,
+        confirmedSubtotal,
+        confirmedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (e) {
+      alert('Error al confirmar: ' + e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col"
+        style={{ maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b flex items-center justify-between flex-shrink-0" style={{ background: '#2D5016', borderRadius: '1rem 1rem 0 0' }}>
+          <div>
+            <h3 className="font-bold text-white text-base">Confirmar pedido</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              #{order.id.substring(0, 8)} — {order.nombrecliente}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-white text-xl opacity-70 hover:opacity-100">✕</button>
+        </div>
+
+        {/* Items */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+          <p className="text-xs mb-1" style={{ color: '#6B7280' }}>
+            Ajusta el peso o cantidad real de cada producto según lo que se pesó/surtió.
+          </p>
+          {order.items.map(item => {
+            const pieza = isPieza(item);
+            const gramsStr = editedGrams[item.id] ?? String(item.grams);
+            const price = calcPrice(item, gramsStr);
+            const changed = Math.abs((parseFloat(gramsStr) || 0) - item.grams) > 0.01;
+
+            return (
+              <div
+                key={item.id}
+                className="rounded-xl p-3 border"
+                style={{ borderColor: changed ? '#FF7043' : '#E5E7EB', background: changed ? '#FFF8F6' : '#FAFAFA' }}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  {item.coverimage && (
+                    <img src={item.coverimage} alt={item.productName} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm" style={{ color: '#1A1A1A' }}>{item.productName}</div>
+                    <div className="text-xs" style={{ color: '#9CA3AF' }}>
+                      Pedido: {pieza ? `${item.grams} pzas` : `${item.grams} g`}
+                      {' · '}${fmtMoney(item.pricePerKg)}/{pieza ? 'pza' : 'kg'}
+                    </div>
+                  </div>
+                  <div className="font-bold text-sm flex-shrink-0" style={{ color: changed ? '#FF7043' : '#2E7D32' }}>
+                    {fmtMoney(price)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium flex-shrink-0" style={{ color: '#374151' }}>
+                    {pieza ? 'Piezas reales:' : 'Gramos reales:'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={pieza ? 1 : 10}
+                    value={gramsStr}
+                    onChange={e => setEditedGrams(prev => ({ ...prev, [item.id]: e.target.value }))}
+                    className="w-28 px-3 py-1.5 rounded-lg border text-sm text-center outline-none font-semibold"
+                    style={{ borderColor: changed ? '#FF7043' : '#E5E7EB' }}
+                  />
+                  {changed && (
+                    <span className="text-xs font-medium" style={{ color: '#FF7043' }}>modificado</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Totals */}
+        <div className="px-5 py-3 border-t flex-shrink-0" style={{ background: '#F8F4EF', borderColor: '#E5E7EB' }}>
+          <div className="flex justify-between text-sm mb-1" style={{ color: '#6B7280' }}>
+            <span>Subtotal real:</span><span>{fmtMoney(confirmedSubtotal)}</span>
+          </div>
+          <div className="flex justify-between text-sm mb-2" style={{ color: '#6B7280' }}>
+            <span>Envío:</span><span>{fmtMoney(order.shippingFee)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-base" style={{ color: '#2E7D32' }}>
+            <span>Total confirmado:</span><span>{fmtMoney(confirmedTotal)}</span>
+          </div>
+          {Math.abs(confirmedTotal - order.total) > 0.01 && (
+            <div className="mt-1 text-xs" style={{ color: '#FF7043' }}>
+              Cotizado: {fmtMoney(order.total)} → Ajustado: {fmtMoney(confirmedTotal)}
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 flex gap-2 border-t flex-shrink-0" style={{ borderColor: '#E5E7EB', borderRadius: '0 0 1rem 1rem' }}>
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium border"
+            style={{ borderColor: '#E5E7EB', color: '#374151' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={saving}
+            className="py-2.5 rounded-xl text-sm font-bold text-white transition-opacity"
+            style={{ flex: 2, background: saving ? '#81C784' : '#2D5016' }}
+          >
+            {saving ? 'Confirmando...' : '✓ Confirmar pedido'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Order Card ─────────────────────────────────────────────────────────────
 
-function OrderCard({ order, onPrint }: { order: Order; onPrint: () => void }) {
+function OrderCard({ order, onPrint, onConfirmar }: { order: Order; onPrint: () => void; onConfirmar: () => void }) {
   const [open, setOpen] = useState(false);
   const sc = statusColor(order.status, order.driverStatusText);
+  const isConfirmado = order.status === 'Confirmado';
 
   return (
     <div
@@ -283,17 +458,33 @@ function OrderCard({ order, onPrint }: { order: Order; onPrint: () => void }) {
               {fmtDate(order.createdAt)}
             </span>
           </div>
-          <div className="text-2xl font-extrabold mt-1" style={{ color: '#2E7D32' }}>
-            {fmtMoney(order.total)}
+          <div className="mt-1 flex items-baseline gap-2">
+            <div className="text-2xl font-extrabold" style={{ color: '#2E7D32' }}>
+              {fmtMoney(isConfirmado && order.confirmedTotal != null ? order.confirmedTotal : order.total)}
+            </div>
+            {isConfirmado && order.confirmedTotal != null && Math.abs(order.confirmedTotal - order.total) > 0.01 && (
+              <div className="text-xs line-through" style={{ color: '#9CA3AF' }}>{fmtMoney(order.total)}</div>
+            )}
           </div>
         </div>
-        <button
-          onClick={onPrint}
-          className="ml-4 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all no-print"
-          style={{ background: '#2D5016', color: 'white' }}
-        >
-          🖨️ Ticket
-        </button>
+        <div className="ml-4 flex flex-col gap-2 flex-shrink-0 no-print">
+          {!isConfirmado && (
+            <button
+              onClick={onConfirmar}
+              className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+              style={{ background: '#2E7D32', color: 'white' }}
+            >
+              ✓ Confirmar
+            </button>
+          )}
+          <button
+            onClick={onPrint}
+            className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border"
+            style={{ background: 'white', color: '#2D5016', borderColor: '#2D5016' }}
+          >
+            🖨️ Ticket
+          </button>
+        </div>
       </div>
 
       {/* Address */}
@@ -393,6 +584,7 @@ export default function PedidosPage() {
   const [filter, setFilter] = useState('todos');
   const [search, setSearch] = useState('');
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  const [confirmarOrder, setConfirmarOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadItems = useCallback(async (orderId: string): Promise<OrderItem[]> => {
@@ -408,10 +600,12 @@ export default function PedidosPage() {
         const ts = data.createdAt;
         return {
           id: d.id,
+          userRef: data.userRef?.id ?? '',
           nombrecliente: data.nombrecliente ?? '',
           subtotal: data.subtotal ?? 0,
           shippingFee: data.shippingFee ?? 0,
           total: data.total ?? 0,
+          confirmedTotal: data.confirmedTotal,
           status: data.status ?? '',
           driverTag: data.driverTag ?? '',
           driverStatusText: data.driverStatusText ?? '',
@@ -531,13 +725,23 @@ export default function PedidosPage() {
         </div>
       ) : (
         filtered.map(o => (
-          <OrderCard key={o.id} order={o} onPrint={() => setPrintOrder(o)} />
+          <OrderCard
+            key={o.id}
+            order={o}
+            onPrint={() => setPrintOrder(o)}
+            onConfirmar={() => setConfirmarOrder(o)}
+          />
         ))
       )}
 
       {/* Print modal */}
       {printOrder && (
         <PrintModal order={printOrder} onClose={() => setPrintOrder(null)} />
+      )}
+
+      {/* Confirmar modal */}
+      {confirmarOrder && (
+        <ConfirmarModal order={confirmarOrder} onClose={() => setConfirmarOrder(null)} />
       )}
     </div>
   );
