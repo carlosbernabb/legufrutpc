@@ -6,9 +6,10 @@ import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firest
 interface OrderItem {
   id: string;
   productName: string;
-  quantity: number;
-  unit: string;
-  price: number;
+  quantity: number;   // raw grams or piece count
+  unit: string;       // 'g' or 'pza'
+  price: number;      // pricePerKg
+  unitPrice: number;  // pre-calculated line total
 }
 
 interface Order {
@@ -27,6 +28,15 @@ interface AggregatedProduct {
   totalQuantity: number;
   orderCount: number;
   orders: { orderId: string; customerName: string; quantity: number }[];
+}
+
+function formatQty(qty: number, unit: string): string {
+  if (unit === 'pza') return `${qty} pza${qty !== 1 ? 's' : ''}`;
+  if (qty >= 1000) {
+    const kg = qty / 1000;
+    return `${Number.isInteger(kg) ? kg : parseFloat(kg.toFixed(3))} kg`;
+  }
+  return `${qty} g`;
 }
 
 function formatDate(d: Date) {
@@ -66,13 +76,20 @@ export default function VaciadoPage() {
         const data = doc.data();
         const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : null;
         const itemsSnap = await getDocs(collection(db, 'orders', doc.id, 'ordersitems'));
-        const items: OrderItem[] = itemsSnap.docs.map(id => ({
-          id: id.id,
-          productName: id.data().productName || id.data().nombre || 'Producto',
-          quantity: id.data().quantity || id.data().cantidad || 0,
-          unit: id.data().unit || id.data().unidad || 'unidad',
-          price: id.data().price || id.data().precio || 0,
-        }));
+        const items: OrderItem[] = itemsSnap.docs.map(itemDoc => {
+          const d = itemDoc.data();
+          const rawGrams: number = d.grams ?? 0;
+          const unitType: string = d.unitType ?? 'g';
+          const isPieza = unitType === 'Piezas';
+          return {
+            id: itemDoc.id,
+            productName: d.productName || 'Producto',
+            quantity: rawGrams,
+            unit: isPieza ? 'pza' : 'g',
+            price: d.pricePerKg ?? 0,
+            unitPrice: d.confirmedUnitPrice ?? d.unitPrice ?? 0,
+          };
+        });
         ordersWithItems.push({
           id: doc.id,
           nombrecliente: data.nombrecliente || data.customerName || 'Cliente',
@@ -96,7 +113,8 @@ export default function VaciadoPage() {
     const matchStatus =
       statusFilter === 'Todos' ? true :
       statusFilter === 'En Reparto' ? o.status === 'En Reparto' || o.status === 'Reparto' :
-      o.status === statusFilter;
+      // 'Pendiente' tab = needs to be bought → includes both Pendiente AND Confirmado
+      o.status === 'Pendiente' || o.status === 'Confirmado';
     return matchDate && matchStatus;
   });
 
@@ -141,14 +159,13 @@ export default function VaciadoPage() {
 
   function printVaciado() {
     const statusLabel =
-      statusFilter === 'Pendiente' ? 'Pedidos Pendientes' :
+      statusFilter === 'Pendiente' ? 'Por preparar (Pendientes + Confirmados)' :
       statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos los Pedidos';
 
     const aggregatedRows = aggregatedList.map(p =>
       `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600">${p.productName}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-size:18px;font-weight:700;color:#2D5016">${p.totalQuantity}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#666">${p.unit}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-size:18px;font-weight:700;color:#2D5016">${formatQty(p.totalQuantity, p.unit)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#888;font-size:13px">${p.orderCount} pedido${p.orderCount > 1 ? 's' : ''}</td>
       </tr>`
     ).join('');
@@ -162,7 +179,7 @@ export default function VaciadoPage() {
           : o.items.map(item =>
               `<div style="padding:6px 12px;border-top:1px solid #eee;font-size:13px;display:flex;justify-content:space-between">
                 <span>${item.productName}</span>
-                <span style="font-weight:600">${item.quantity} ${item.unit}</span>
+                <span style="font-weight:600">${formatQty(item.quantity, item.unit)}</span>
               </div>`
             ).join('')
         }
@@ -188,7 +205,7 @@ export default function VaciadoPage() {
       <h2 style="font-size:15px;color:#2D5016;margin:0 0 10px">Resumen por Producto</h2>
       <table>
         <thead><tr>
-          <th>Producto</th><th>Total</th><th>Unidad</th><th>Pedidos</th>
+          <th>Producto</th><th style="text-align:right">Cantidad total</th><th>Pedidos</th>
         </tr></thead>
         <tbody>${aggregatedRows}</tbody>
       </table>
@@ -205,7 +222,7 @@ export default function VaciadoPage() {
   }
 
   const statusOptions: { value: typeof statusFilter; label: string; color: string }[] = [
-    { value: 'Pendiente', label: 'Pendientes', color: '#E65100' },
+    { value: 'Pendiente', label: 'Por preparar', color: '#E65100' },
     { value: 'En Reparto', label: 'En Reparto', color: '#1565C0' },
     { value: 'Todos', label: 'Todos', color: '#424242' },
   ];
@@ -291,14 +308,6 @@ export default function VaciadoPage() {
             </div>
             <div className="bg-white rounded-xl border px-4 py-3 flex items-center gap-2"
               style={{ borderColor: '#E5E7EB' }}>
-              <span className="text-xl">🛒</span>
-              <div>
-                <div className="text-lg font-bold" style={{ color: '#2D5016' }}>{totalItems}</div>
-                <div className="text-xs" style={{ color: '#6B7280' }}>Unidades totales</div>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border px-4 py-3 flex items-center gap-2"
-              style={{ borderColor: '#E5E7EB' }}>
               <span className="text-xl">💰</span>
               <div>
                 <div className="text-lg font-bold" style={{ color: '#2D5016' }}>
@@ -334,8 +343,7 @@ export default function VaciadoPage() {
                       <thead>
                         <tr style={{ background: '#2D5016' }}>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-white">Producto</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-white">Total</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-white">Unidad</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-white">Cantidad total</th>
                           <th className="text-center px-4 py-3 text-xs font-semibold text-white">Pedidos</th>
                         </tr>
                       </thead>
@@ -346,12 +354,11 @@ export default function VaciadoPage() {
                             <td className="px-4 py-3 text-sm font-medium" style={{ color: '#1A1A1A' }}>
                               {p.productName}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className="text-lg font-bold" style={{ color: '#2D5016' }}>
-                                {p.totalQuantity}
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-base font-bold" style={{ color: '#2D5016' }}>
+                                {formatQty(p.totalQuantity, p.unit)}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm" style={{ color: '#6B7280' }}>{p.unit}</td>
                             <td className="px-4 py-3 text-center">
                               <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                                 style={{ background: '#E8F5E9', color: '#2D5016' }}>
@@ -364,16 +371,9 @@ export default function VaciadoPage() {
                       <tfoot>
                         <tr style={{ background: '#F3F4F6', borderTop: '2px solid #E5E7EB' }}>
                           <td className="px-4 py-3 text-sm font-bold" style={{ color: '#374151' }}>
-                            TOTAL
+                            {aggregatedList.length} producto{aggregatedList.length !== 1 ? 's' : ''} distintos
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="text-lg font-bold" style={{ color: '#2D5016' }}>
-                              {totalItems}
-                            </span>
-                          </td>
-                          <td colSpan={2} className="px-4 py-3 text-sm" style={{ color: '#6B7280' }}>
-                            en {aggregatedList.length} producto{aggregatedList.length !== 1 ? 's' : ''}
-                          </td>
+                          <td colSpan={2} />
                         </tr>
                       </tfoot>
                     </table>
@@ -444,11 +444,13 @@ export default function VaciadoPage() {
                                   </span>
                                   <div className="flex items-center gap-3">
                                     <span className="text-sm font-semibold" style={{ color: '#2D5016' }}>
-                                      {item.quantity} {item.unit}
+                                      {formatQty(item.quantity, item.unit)}
                                     </span>
-                                    <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                                      ${(item.price * item.quantity).toFixed(2)}
-                                    </span>
+                                    {item.unitPrice > 0 && (
+                                      <span className="text-xs" style={{ color: '#9CA3AF' }}>
+                                        ${item.unitPrice.toFixed(2)}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               ))
