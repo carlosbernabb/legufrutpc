@@ -30,11 +30,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const navItems = [
-    { href: '/dashboard/pedidos',   label: 'Pedidos',   icon: '📋' },
-    { href: '/dashboard/vaciado',   label: 'Vaciado',   icon: '📊' },
-    { href: '/dashboard/mapa',      label: 'Mapa',      icon: '🗺️' },
-    { href: '/dashboard/productos', label: 'Productos', icon: '🥦' },
-    { href: '/dashboard/recetas',   label: 'Recetas',   icon: '👨‍🍳' },
+    { href: '/dashboard/pedidos',      label: 'Pedidos',      icon: '📋' },
+    { href: '/dashboard/vaciado',      label: 'Vaciado',      icon: '📊' },
+    { href: '/dashboard/mapa',         label: 'Mapa',         icon: '🗺️' },
+    { href: '/dashboard/productos',    label: 'Productos',    icon: '🥦' },
+    { href: '/dashboard/recetas',      label: 'Recetas',      icon: '👨‍🍳' },
+    { href: '/dashboard/conductores',  label: 'Conductores',  icon: '🚗' },
   ];
 
   return (
