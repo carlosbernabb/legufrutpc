@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { auth } from '@/lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,11 +13,17 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
     if (user === 'LeguFrut2026' && pass === 'manzanita44') {
+      try {
+        // Sign in anonymously to Firebase so Firestore rules (request.auth != null) pass
+        await signInAnonymously(auth);
+      } catch {
+        // Non-fatal: anonymous auth may be disabled; Firestore will use its own rules
+      }
       sessionStorage.setItem('lf_auth', 'true');
       router.push('/dashboard/pedidos');
     } else {
