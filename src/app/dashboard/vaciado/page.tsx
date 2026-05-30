@@ -159,61 +159,91 @@ export default function VaciadoPage() {
 
   function printVaciado() {
     const statusLabel =
-      statusFilter === 'Pendiente' ? 'Por preparar (Pendientes + Confirmados)' :
-      statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos los Pedidos';
+      statusFilter === 'Pendiente' ? 'Por preparar' :
+      statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos';
 
-    const aggregatedRows = aggregatedList.map(p =>
-      `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600">${p.productName}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-size:18px;font-weight:700;color:#2D5016">${formatQty(p.totalQuantity, p.unit)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#888;font-size:13px">${p.orderCount} pedido${p.orderCount > 1 ? 's' : ''}</td>
-      </tr>`
-    ).join('');
+    const SEP  = '--------------------------------';
+    const SEP2 = '================================';
 
-    const orderRows = filteredOrders.map(o =>
-      `<div style="margin-bottom:16px;border:1px solid #ddd;border-radius:8px;overflow:hidden">
-        <div style="background:#f5f5f5;padding:8px 12px;font-weight:600;font-size:13px">#${o.id.slice(-6).toUpperCase()} — ${o.nombrecliente}</div>
-        <div style="padding:8px 12px;font-size:13px;color:#555">${o.direccioncliente}</div>
-        ${o.items.length === 0
-          ? '<div style="padding:8px 12px;color:#999;font-style:italic;font-size:13px">Sin productos</div>'
-          : o.items.map(item =>
-              `<div style="padding:6px 12px;border-top:1px solid #eee;font-size:13px;display:flex;justify-content:space-between">
-                <span>${item.productName}</span>
-                <span style="font-weight:600">${formatQty(item.quantity, item.unit)}</span>
-              </div>`
-            ).join('')
-        }
-        <div style="padding:8px 12px;border-top:1px solid #ddd;text-align:right;font-weight:700;color:#2D5016">Total: $${o.total.toFixed(2)}</div>
-      </div>`
-    ).join('');
+    // Helper: pad string to fixed width for two-column layout
+    function padRow(left: string, right: string, width = 32): string {
+      const maxLeft = width - right.length - 1;
+      const l = left.length > maxLeft ? left.slice(0, maxLeft - 1) + '.' : left;
+      return l + ' '.repeat(width - l.length - right.length) + right;
+    }
+
+    const productLines = aggregatedList.map(p => {
+      const qty = formatQty(p.totalQuantity, p.unit);
+      return [
+        padRow(p.productName, qty),
+        `  (${p.orderCount} pedido${p.orderCount !== 1 ? 's' : ''})`,
+        SEP,
+      ].join('\n');
+    }).join('\n');
+
+    const orderLines = filteredOrders.map(o => {
+      const header = `#${o.id.slice(-6).toUpperCase()} ${o.nombrecliente}`;
+      const items = o.items.length === 0
+        ? '  (sin productos)'
+        : o.items.map(item => '  ' + padRow(item.productName, formatQty(item.quantity, item.unit), 30)).join('\n');
+      const total = padRow('TOTAL:', `$${o.total.toFixed(2)}`);
+      return [header, items, SEP, total, SEP].join('\n');
+    }).join('\n');
+
+    const totalVentas = filteredOrders.reduce((s, o) => s + o.total, 0);
+
+    const text = [
+      SEP2,
+      '         LEGUFRUT ADMIN         ',
+      '       VACIADO DE COMPRAS       ',
+      SEP2,
+      `Fecha  : ${formatShortDate(selectedDateObj)}`,
+      `Estado : ${statusLabel}`,
+      `Pedidos: ${totalOrders}`,
+      `Prods  : ${aggregatedList.length} distintos`,
+      SEP2,
+      '          QUE COMPRAR           ',
+      SEP2,
+      aggregatedList.length === 0 ? '  (sin productos)' : productLines,
+      SEP2,
+      '      DESGLOSE POR PEDIDO       ',
+      SEP2,
+      filteredOrders.length === 0 ? '  (sin pedidos)' : orderLines,
+      SEP2,
+      padRow('TOTAL VENTAS:', `$${totalVentas.toFixed(2)}`),
+      SEP2,
+    ].join('\n');
 
     const html = `<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <title>Vaciado ${formatShortDate(selectedDateObj)}</title>
       <style>
-        body{font-family:Arial,sans-serif;padding:24px;color:#1a1a1a}
-        h1{color:#2D5016;margin:0 0 4px}
-        .subtitle{color:#666;font-size:14px;margin-bottom:24px}
-        table{width:100%;border-collapse:collapse;margin-bottom:32px}
-        th{background:#2D5016;color:white;padding:10px 12px;text-align:left;font-size:13px}
-        th:nth-child(2){text-align:center}
-        @media print{button{display:none}}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 12px;
+          line-height: 1.5;
+          width: 300px;
+          padding: 8px 4px;
+          color: #000;
+          background: #fff;
+        }
+        pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+          font-family: inherit;
+          font-size: inherit;
+        }
+        @media print {
+          body { margin: 0; padding: 4px; }
+          @page { margin: 4mm; }
+        }
       </style>
     </head><body>
-      <h1>Vaciado de Compras</h1>
-      <div class="subtitle">${formatDate(selectedDateObj)} &bull; ${statusLabel} &bull; ${totalOrders} pedido${totalOrders !== 1 ? 's' : ''}</div>
-      <h2 style="font-size:15px;color:#2D5016;margin:0 0 10px">Resumen por Producto</h2>
-      <table>
-        <thead><tr>
-          <th>Producto</th><th style="text-align:right">Cantidad total</th><th>Pedidos</th>
-        </tr></thead>
-        <tbody>${aggregatedRows}</tbody>
-      </table>
-      <h2 style="font-size:15px;color:#2D5016;margin:0 0 10px">Desglose por Pedido</h2>
-      ${orderRows || '<p style="color:#999;font-style:italic">Sin pedidos para esta fecha.</p>'}
+      <pre>${text}</pre>
     </body></html>`;
 
-    const win = window.open('', '_blank', 'width=800,height=700');
+    const win = window.open('', '_blank', 'width=360,height=700');
     if (!win) return;
     win.document.write(html);
     win.document.close();
