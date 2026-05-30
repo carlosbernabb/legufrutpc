@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { auth } from '@/lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,19 +15,23 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!user.trim() || !pass) return;
     setLoading(true);
     setError('');
-    if (user === 'LeguFrut2026' && pass === 'manzanita44') {
-      try {
-        // Sign in anonymously to Firebase so Firestore rules (request.auth != null) pass
-        await signInAnonymously(auth);
-      } catch {
-        // Non-fatal: anonymous auth may be disabled; Firestore will use its own rules
-      }
-      sessionStorage.setItem('lf_auth', 'true');
+    try {
+      await signInWithEmailAndPassword(auth, user.trim(), pass);
       router.push('/dashboard/pedidos');
-    } else {
-      setError('Usuario o contraseña incorrectos');
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code ?? '';
+      if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setError('Correo o contraseña incorrectos');
+      } else if (code === 'auth/invalid-email') {
+        setError('El correo no es válido');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Demasiados intentos. Espera un momento e intenta de nuevo.');
+      } else {
+        setError('Error al iniciar sesión. Intenta de nuevo.');
+      }
       setLoading(false);
     }
   }
@@ -54,18 +58,18 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>
-                Usuario
+                Correo electrónico
               </label>
               <input
-                type="text"
+                type="email"
                 value={user}
                 onChange={e => setUser(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all"
                 style={{ borderColor: '#E5E7EB', color: '#1A1A1A' }}
                 onFocus={e => (e.target.style.borderColor = '#2E7D32')}
                 onBlur={e => (e.target.style.borderColor = '#E5E7EB')}
-                placeholder="Usuario"
-                autoComplete="username"
+                placeholder="correo@ejemplo.com"
+                autoComplete="email"
               />
             </div>
             <div>

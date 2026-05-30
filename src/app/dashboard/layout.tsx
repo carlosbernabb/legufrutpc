@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -10,17 +12,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (sessionStorage.getItem('lf_auth') !== 'true') {
-      router.replace('/login');
-    } else {
-      setReady(true);
-    }
+    const unsub = onAuthStateChanged(auth, user => {
+      if (user) {
+        setReady(true);
+      } else {
+        router.replace('/login');
+      }
+    });
+    return () => unsub();
   }, [router]);
 
   if (!ready) return null;
 
-  function logout() {
-    sessionStorage.removeItem('lf_auth');
+  async function logout() {
+    await signOut(auth);
     router.push('/login');
   }
 
