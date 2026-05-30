@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { db, storage } from '@/lib/firebase';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp,
+  doc, serverTimestamp, getDocs,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -324,6 +324,9 @@ export default function ProductosPage() {
   const [activeCategory, setActiveCat] = useState('Frutas');
   const [search, setSearch]         = useState('');
   const [modal, setModal]           = useState<null | { data: ProductData & { id?: string } }>(null);
+  const [carnasEnabled, setCarnasEnabled] = useState(false);
+  const [configDocId, setConfigDocId]     = useState<string | null>(null);
+  const [carnasToggling, setCarnasToggling] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -342,6 +345,36 @@ export default function ProductosPage() {
     );
     return () => unsub();
   }, []);
+
+  // Suscripción en tiempo real a app_config para el toggle de Carnes
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'app_config'), snap => {
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        setConfigDocId(d.id);
+        setCarnasEnabled(!!(d.data().carnas_enabled));
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  async function handleCarnasToggle() {
+    if (!configDocId) {
+      // Si no hay doc, lo creamos
+      const snap = await getDocs(collection(db, 'app_config'));
+      if (snap.empty) return;
+      setConfigDocId(snap.docs[0].id);
+    }
+    setCarnasToggling(true);
+    try {
+      const id = configDocId ?? (await getDocs(collection(db, 'app_config'))).docs[0].id;
+      await updateDoc(doc(db, 'app_config', id), {
+        carnas_enabled: !carnasEnabled,
+      });
+    } finally {
+      setCarnasToggling(false);
+    }
+  }
 
   async function handleSave(data: ProductData, id?: string) {
     if (id) {
@@ -437,6 +470,67 @@ export default function ProductosPage() {
           </div>
         </div>
       </div>
+
+      {/* Toggle Carnes — solo visible en la categoría Carnes */}
+      {activeCategory === 'Carnes' && (
+        <div className="mb-5 rounded-2xl border-2 overflow-hidden"
+          style={{ borderColor: carnasEnabled ? '#880E4F' : '#E5E7EB' }}>
+          {/* Header del banner */}
+          <div className="px-5 py-3 flex items-center justify-between"
+            style={{ background: carnasEnabled ? '#FCE4EC' : '#F9FAFB' }}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🥩</span>
+              <div>
+                <div className="font-bold text-sm" style={{ color: '#1A1A1A' }}>
+                  Categoría Carnes en la app
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
+                  {carnasEnabled
+                    ? 'Visible para los clientes — pueden ver y pedir carnes'
+                    : 'Oculta para los clientes — no aparece en el home'}
+                </div>
+              </div>
+            </div>
+
+            {/* Toggle switch */}
+            <button
+              onClick={handleCarnasToggle}
+              disabled={carnasToggling}
+              className="relative flex-shrink-0 transition-all"
+              style={{ width: 52, height: 28 }}
+              title={carnasEnabled ? 'Desactivar Carnes' : 'Activar Carnes'}
+            >
+              <div className="w-full h-full rounded-full transition-all duration-300"
+                style={{ background: carnasEnabled ? '#880E4F' : '#D1D5DB' }} />
+              <div className="absolute top-1 rounded-full bg-white shadow transition-all duration-300"
+                style={{
+                  width: 20, height: 20,
+                  left: carnasEnabled ? 28 : 4,
+                }} />
+            </button>
+          </div>
+
+          {/* Estado actual */}
+          <div className="px-5 py-2.5 flex items-center gap-2 border-t"
+            style={{
+              borderColor: carnasEnabled ? '#F48FB1' : '#E5E7EB',
+              background: carnasEnabled ? '#FFF0F5' : '#FAFAFA',
+            }}>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={{
+                background: carnasEnabled ? '#880E4F' : '#6B7280',
+                color: 'white',
+              }}>
+              {carnasEnabled ? '● ACTIVA' : '○ INACTIVA'}
+            </span>
+            <span className="text-xs" style={{ color: '#6B7280' }}>
+              {carnasEnabled
+                ? 'La sección de Carnes es visible en el home de la app y los clientes pueden ordenar.'
+                : 'La sección de Carnes está oculta. Actívala cuando estés listo para vender.'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {loadError && (
