@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, query, orderBy,
+  doc, serverTimestamp,
 } from 'firebase/firestore';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -435,8 +435,7 @@ export default function RecetasPage() {
   const [modal, setModal] = useState<null | { data: Omit<Recipe, 'id'> & { id?: string } }>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'recipes'), orderBy('name', 'asc'));
-    const unsub = onSnapshot(q, snap => {
+    const unsub = onSnapshot(collection(db, 'recipes'), snap => {
       setRecipes(
         snap.docs.map(d => ({
           id: d.id,
