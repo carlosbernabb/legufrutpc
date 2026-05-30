@@ -56,10 +56,6 @@ function parseColor(hex: string): string {
   return `#${hex}`;
 }
 
-function lighten(hex: string): string {
-  return `${hex}22`;
-}
-
 // ── Recipe Form Modal ──────────────────────────────────────────────────────
 
 function RecipeModal({
@@ -337,91 +333,97 @@ function RecipeCard({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const bg = lighten(recipe.colorHex);
   const color = parseColor(recipe.colorHex);
 
   return (
     <div
-      className="rounded-2xl border overflow-hidden"
-      style={{ borderColor: '#E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+      className="rounded-xl bg-white flex overflow-hidden"
+      style={{ border: '1px solid #E5E7EB', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center gap-3 px-4 py-3"
-        style={{ background: `#${bg.slice(1, 7)}` || '#F0FBF0' }}
-      >
-        {/* Color dot + emoji */}
-        <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-          style={{ background: color, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}
-        >
-          {recipe.emoji}
-        </div>
+      {/* Left accent bar */}
+      <div className="w-1 flex-shrink-0" style={{ background: color }} />
 
-        <div className="flex-1 min-w-0">
-          <div className="font-bold text-sm" style={{ color: '#1A1A1A' }}>{recipe.name}</div>
-          <div className="flex gap-3 mt-0.5">
-            <span className="text-xs" style={{ color: '#6B7280' }}>
-              👥 {recipe.servings} porciones
-            </span>
-            <span className="text-xs" style={{ color: '#6B7280' }}>
-              ⏱️ {recipe.timeMin} min
-            </span>
-            <span className="text-xs" style={{ color: '#6B7280' }}>
-              🥕 {recipe.ingredients.length} ingredientes
-            </span>
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* Main row */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Emoji badge */}
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+            style={{ background: `${color}18` }}
+          >
+            {recipe.emoji}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm" style={{ color: '#111827' }}>
+              {recipe.name}
+            </div>
+            <div className="flex gap-4 mt-0.5">
+              <span className="text-xs" style={{ color: '#6B7280' }}>
+                👥 {recipe.servings} porciones
+              </span>
+              <span className="text-xs" style={{ color: '#6B7280' }}>
+                ⏱️ {recipe.timeMin} min
+              </span>
+              <span className="text-xs" style={{ color: '#6B7280' }}>
+                🥕 {recipe.ingredients.length} ingredientes
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => setOpen(o => !o)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={{ background: '#F9FAFB', color: '#374151', borderColor: '#E5E7EB' }}
+            >
+              {open ? '▲' : '▼'} Ver
+            </button>
+            <button
+              onClick={onEdit}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border text-sm transition-colors"
+              style={{ background: '#F9FAFB', color: '#374151', borderColor: '#E5E7EB' }}
+              title="Editar"
+            >
+              ✏️
+            </button>
+            <button
+              onClick={onDelete}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border text-sm transition-colors"
+              style={{ background: '#FFF5F5', color: '#C62828', borderColor: '#FFCDD2' }}
+              title="Eliminar"
+            >
+              🗑️
+            </button>
           </div>
         </div>
 
-        <div className="flex gap-2 flex-shrink-0">
-          <button
-            onClick={() => setOpen(o => !o)}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all"
-            style={{ background: 'white', color: '#374151', borderColor: '#E5E7EB' }}
-          >
-            {open ? '▲' : '▼'} Ver
-          </button>
-          <button
-            onClick={onEdit}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all"
-            style={{ background: 'white', color: '#2D5016', borderColor: '#2D5016' }}
-          >
-            ✏️
-          </button>
-          <button
-            onClick={onDelete}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all"
-            style={{ background: '#FFF5F5', color: '#C62828', borderColor: '#FFCDD2' }}
-          >
-            🗑️
-          </button>
-        </div>
+        {/* Ingredients (expandable) */}
+        {open && (
+          <div className="px-4 pb-3 border-t" style={{ borderColor: '#F3F4F6' }}>
+            <div className="text-xs font-semibold tracking-wide pt-3 mb-2" style={{ color: '#9CA3AF' }}>
+              INGREDIENTES
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {recipe.ingredients.map((ing, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+                  style={{ background: '#F9FAFB', border: '1px solid #F3F4F6' }}
+                >
+                  <span className="text-xs font-medium flex-1 truncate" style={{ color: '#374151' }}>
+                    {ing.name}
+                  </span>
+                  <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: '#6B7280' }}>
+                    {ing.qty} {ing.unit}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Ingredients (expandable) */}
-      {open && (
-        <div className="px-4 py-3 border-t" style={{ borderColor: '#E5E7EB', background: 'white' }}>
-          <div className="text-xs font-semibold mb-2" style={{ color: '#6B7280' }}>
-            INGREDIENTES
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {recipe.ingredients.map((ing, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 rounded-xl px-3 py-1.5"
-                style={{ background: '#FAFAFA', border: '1px solid #E5E7EB' }}
-              >
-                <span className="text-xs font-medium flex-1 truncate" style={{ color: '#1A1A1A' }}>
-                  {ing.name}
-                </span>
-                <span className="text-xs flex-shrink-0" style={{ color: '#6B7280' }}>
-                  {ing.qty} {ing.unit}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
