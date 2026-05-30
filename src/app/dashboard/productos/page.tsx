@@ -16,7 +16,7 @@ interface Product {
   category: string;
   price: number;
   saleType: string;    // 'Por Kilo' | 'Por Pieza'
-  coverimage: string;  // lowercase — matches Firestore field name
+  coverImage: string;  // camelCase — matches Firestore field name
 }
 
 type ProductData = Omit<Product, 'id'>;
@@ -36,7 +36,7 @@ const SALE_TYPES = ['Por Kilo', 'Por Pieza'];
 
 const EMPTY: ProductData = {
   name: '', description: '', category: 'Frutas',
-  price: 0, saleType: 'Por Kilo', coverimage: '',
+  price: 0, saleType: 'Por Kilo', coverImage: '',
 };
 
 function saleLabel(saleType: string) {
@@ -71,7 +71,7 @@ function ProductModal({
       const sRef = storageRef(storage, path);
       await uploadBytes(sRef, file);
       const url = await getDownloadURL(sRef);
-      set('coverimage', url);
+      set('coverImage', url);
     } catch {
       setError('Error al subir la imagen. Intenta de nuevo.');
     } finally {
@@ -176,8 +176,8 @@ function ProductModal({
               {/* Preview */}
               <div className="w-20 h-20 rounded-xl border flex items-center justify-center flex-shrink-0 overflow-hidden"
                 style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
-                {form.coverimage ? (
-                  <img src={form.coverimage} alt="preview"
+                {form.coverImage ? (
+                  <img src={form.coverImage} alt="preview"
                     className="w-full h-full object-cover"
                     onError={e => { e.currentTarget.style.display = 'none'; }} />
                 ) : (
@@ -205,7 +205,7 @@ function ProductModal({
                   {uploading ? '⏳ Subiendo...' : '📁 Subir imagen'}
                 </button>
                 <input className={inp} style={{ ...inpS, fontSize: '12px' }}
-                  value={form.coverimage} onChange={e => set('coverimage', e.target.value)}
+                  value={form.coverImage} onChange={e => set('coverImage', e.target.value)}
                   placeholder="o pega una URL directa" />
               </div>
             </div>
@@ -256,14 +256,14 @@ function ProductCard({
       {/* Image */}
       <div className="w-28 flex-shrink-0 flex items-center justify-center relative overflow-hidden"
         style={{ background: catColor, minHeight: 96 }}>
-        {product.coverimage ? (
-          <img src={product.coverimage} alt={product.name}
+        {product.coverImage ? (
+          <img src={product.coverImage} alt={product.name}
             className="w-full h-full object-cover absolute inset-0"
             onError={e => {
               e.currentTarget.style.display = 'none';
             }} />
         ) : null}
-        <span className="text-5xl relative z-10" style={{ display: product.coverimage ? 'none' : 'block' }}>
+        <span className="text-5xl relative z-10" style={{ display: product.coverImage ? 'none' : 'block' }}>
           {catIcon}
         </span>
       </div>
