@@ -66,6 +66,7 @@ export default function VaciadoPage() {
   const [selectedDate, setSelectedDate] = useState<string>(toInputDate(new Date()));
   const [statusFilter, setStatusFilter] = useState<'Pendiente' | 'En Reparto' | 'Todos'>('Pendiente');
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [printOpen, setPrintOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -157,20 +158,19 @@ export default function VaciadoPage() {
     });
   }
 
-  function printVaciado() {
+  const SEP  = '--------------------------------';
+  const SEP2 = '================================';
+
+  function padRow(left: string, right: string, width = 32): string {
+    const maxLeft = width - right.length - 1;
+    const l = left.length > maxLeft ? left.slice(0, maxLeft - 1) + '.' : left;
+    return l + ' '.repeat(width - l.length - right.length) + right;
+  }
+
+  function buildReceiptText(): string {
     const statusLabel =
       statusFilter === 'Pendiente' ? 'Por preparar' :
       statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos';
-
-    const SEP  = '--------------------------------';
-    const SEP2 = '================================';
-
-    // Helper: pad string to fixed width for two-column layout
-    function padRow(left: string, right: string, width = 32): string {
-      const maxLeft = width - right.length - 1;
-      const l = left.length > maxLeft ? left.slice(0, maxLeft - 1) + '.' : left;
-      return l + ' '.repeat(width - l.length - right.length) + right;
-    }
 
     const productLines = aggregatedList.map(p => {
       const qty = formatQty(p.totalQuantity, p.unit);
@@ -185,14 +185,16 @@ export default function VaciadoPage() {
       const header = `#${o.id.slice(-6).toUpperCase()} ${o.nombrecliente}`;
       const items = o.items.length === 0
         ? '  (sin productos)'
-        : o.items.map(item => '  ' + padRow(item.productName, formatQty(item.quantity, item.unit), 30)).join('\n');
+        : o.items.map(item =>
+            '  ' + padRow(item.productName, formatQty(item.quantity, item.unit), 30)
+          ).join('\n');
       const total = padRow('TOTAL:', `$${o.total.toFixed(2)}`);
       return [header, items, SEP, total, SEP].join('\n');
     }).join('\n');
 
     const totalVentas = filteredOrders.reduce((s, o) => s + o.total, 0);
 
-    const text = [
+    return [
       SEP2,
       '         LEGUFRUT ADMIN         ',
       '       VACIADO DE COMPRAS       ',
@@ -213,7 +215,10 @@ export default function VaciadoPage() {
       padRow('TOTAL VENTAS:', `$${totalVentas.toFixed(2)}`),
       SEP2,
     ].join('\n');
+  }
 
+  function doPrint() {
+    const text = buildReceiptText();
     const html = `<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <title>Vaciado ${formatShortDate(selectedDateObj)}</title>
@@ -239,9 +244,7 @@ export default function VaciadoPage() {
           @page { margin: 4mm; }
         }
       </style>
-    </head><body>
-      <pre>${text}</pre>
-    </body></html>`;
+    </head><body><pre>${text}</pre></body></html>`;
 
     const win = window.open('', '_blank', 'width=360,height=700');
     if (!win) return;
@@ -268,7 +271,7 @@ export default function VaciadoPage() {
           </p>
         </div>
         <button
-          onClick={printVaciado}
+          onClick={() => setPrintOpen(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white no-print"
           style={{ background: '#2D5016' }}
         >
@@ -495,6 +498,89 @@ export default function VaciadoPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Print Preview Modal ──────────────────────────────────────────── */}
+      {printOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => setPrintOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 flex flex-col"
+            style={{ maxHeight: '90vh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              className="px-5 py-4 flex items-center justify-between flex-shrink-0"
+              style={{ background: '#2D5016', borderRadius: '1rem 1rem 0 0' }}
+            >
+              <div>
+                <h3 className="font-bold text-white text-base">🖨️ Vista previa — Ticket térmico</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  Vaciado · {formatShortDate(selectedDateObj)} · {totalOrders} pedido{totalOrders !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="text-white text-xl opacity-70 hover:opacity-100"
+              >✕</button>
+            </div>
+
+            {/* Receipt preview */}
+            <div
+              className="overflow-y-auto flex-1 flex justify-center py-6 px-4"
+              style={{ background: '#E8E8E8' }}
+            >
+              {/* Paper receipt card */}
+              <div style={{
+                background: 'white',
+                width: 280,
+                padding: '14px 10px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+                borderRadius: 2,
+                fontFamily: "'Courier New', Courier, monospace",
+                fontSize: 11,
+                lineHeight: 1.55,
+                color: '#000',
+                flexShrink: 0,
+              }}>
+                <pre style={{
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  margin: 0,
+                }}>
+                  {buildReceiptText()}
+                </pre>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              className="px-5 py-4 border-t flex gap-3 flex-shrink-0"
+              style={{ borderColor: '#E5E7EB' }}
+            >
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium border"
+                style={{ borderColor: '#E5E7EB', color: '#374151' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { doPrint(); setPrintOpen(false); }}
+                className="py-2.5 rounded-xl text-sm font-bold text-white"
+                style={{ flex: 2, background: '#2D5016' }}
+              >
+                🖨️ Imprimir
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
