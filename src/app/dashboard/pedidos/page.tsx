@@ -3,8 +3,121 @@ import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import {
   collection, query, orderBy, onSnapshot,
-  getDocs, Timestamp, updateDoc, deleteDoc, doc, serverTimestamp, addDoc,
+  getDocs, Timestamp, updateDoc, deleteDoc, doc, serverTimestamp, addDoc, GeoPoint,
 } from 'firebase/firestore';
+
+// ── Test order data ────────────────────────────────────────────────────────
+
+const TEST_PRODUCTS = [
+  // Frutas
+  { name: 'Manzana Golden',        price: 45,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Fresas',                price: 125, unit: 'Gramos', min: 250,  max: 1000, step: 250 },
+  { name: 'Plátano Tabasco',       price: 18,  unit: 'Gramos', min: 1000, max: 3000, step: 500 },
+  { name: 'Naranja Valencia',      price: 22,  unit: 'Gramos', min: 1000, max: 5000, step: 500 },
+  { name: 'Mango Manila',          price: 55,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Papaya Maradol',        price: 28,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Uva Verde sin Semilla', price: 85,  unit: 'Gramos', min: 250,  max: 750,  step: 250 },
+  { name: 'Melón Cantaloupe',      price: 20,  unit: 'Gramos', min: 1000, max: 3000, step: 500 },
+  { name: 'Lima',                  price: 25,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  // Verduras
+  { name: 'Jitomate Saladette',    price: 28,  unit: 'Gramos', min: 500,  max: 3000, step: 250 },
+  { name: 'Cebolla Blanca',        price: 22,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Espinaca Baby',         price: 28,  unit: 'Gramos', min: 100,  max: 500,  step: 100 },
+  { name: 'Zanahoria',             price: 18,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Papa Blanca',           price: 15,  unit: 'Gramos', min: 1000, max: 5000, step: 500 },
+  { name: 'Brócoli',               price: 32,  unit: 'Gramos', min: 500,  max: 2000, step: 250 },
+  { name: 'Aguacate Hass',         price: 38,  unit: 'Piezas', min: 2,    max: 8,    step: 1   },
+  { name: 'Lechuga Orejona',       price: 20,  unit: 'Piezas', min: 1,    max: 3,    step: 1   },
+  { name: 'Pepino',                price: 15,  unit: 'Piezas', min: 2,    max: 6,    step: 1   },
+  // Abarrotes
+  { name: 'Arroz Extra',           price: 32,  unit: 'Gramos', min: 500,  max: 2000, step: 500 },
+  { name: 'Frijol Negro',          price: 38,  unit: 'Gramos', min: 500,  max: 2000, step: 500 },
+  { name: 'Aceite Vegetal 1L',     price: 45,  unit: 'Piezas', min: 1,    max: 3,    step: 1   },
+  // Chiles–Semillas–Plantas
+  { name: 'Chile Serrano',         price: 65,  unit: 'Gramos', min: 100,  max: 500,  step: 100 },
+  { name: 'Chile Habanero',        price: 85,  unit: 'Gramos', min: 100,  max: 300,  step: 100 },
+  { name: 'Semilla de Girasol',    price: 55,  unit: 'Gramos', min: 200,  max: 500,  step: 100 },
+  { name: 'Flor de Jamaica',       price: 70,  unit: 'Gramos', min: 100,  max: 400,  step: 100 },
+];
+
+const TEST_ADDRESSES = [
+  {
+    street: 'Blvd. López Mateos', number: '1802', neighborhood: 'Jardines del Moral',
+    postalCode: '37160', referenceNote: 'Edificio azul, piso 3, timbre con apellido García',
+    lat: 21.1355, lng: -101.7098,
+  },
+  {
+    street: 'Av. Juárez', number: '316', neighborhood: 'Centro Histórico',
+    postalCode: '37000', referenceNote: 'Casa dos pisos, portón negro, entre Madero e Hidalgo',
+    lat: 21.1233, lng: -101.6808,
+  },
+  {
+    street: 'Blvd. Campestre', number: '1105', neighborhood: 'Jardines del Campestre',
+    postalCode: '37150', referenceNote: 'Casa esquina barda blanca, reja dorada',
+    lat: 21.1315, lng: -101.7041,
+  },
+  {
+    street: 'Blvd. Francisco Villa', number: '2301', neighborhood: 'San Carlos',
+    postalCode: '37210', referenceNote: 'Frente a farmacia Guadalajara, casa amarilla',
+    lat: 21.1145, lng: -101.7195,
+  },
+  {
+    street: 'Av. Juan Alonso de Torres', number: '1103', neighborhood: 'Los Olivos',
+    postalCode: '37320', referenceNote: 'Junto a plaza Los Olivos, casa con árboles en jardín',
+    lat: 21.1072, lng: -101.6875,
+  },
+  {
+    street: 'Av. Insurgentes', number: '789', neighborhood: 'Jardines de Jerez',
+    postalCode: '37530', referenceNote: 'Esquina con Calle Fresno, buzón rojo en puerta',
+    lat: 21.1468, lng: -101.6748,
+  },
+  {
+    street: 'Calle Madero', number: '450', neighborhood: 'La Martinica',
+    postalCode: '37480', referenceNote: 'Portón azul marino, tocar tres veces',
+    lat: 21.1408, lng: -101.7158,
+  },
+  {
+    street: 'Blvd. del Campesino', number: '1302', neighborhood: 'Medina',
+    postalCode: '37238', referenceNote: 'Casa blanca con jardín, estacionamiento para dos autos',
+    lat: 21.1192, lng: -101.7172,
+  },
+];
+
+const FAKE_NAMES = [
+  'María García López', 'Carlos Hernández', 'Laura Martínez R.', 'José Rodríguez',
+  'Ana Sofía Mendoza', 'Roberto Sánchez', 'Gabriela Torres', 'Luis Pérez Vega',
+];
+
+function rand(min: number, max: number, step = 1): number {
+  const steps = Math.floor((max - min) / step);
+  return min + Math.floor(Math.random() * (steps + 1)) * step;
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function buildRandomItems() {
+  // Shuffle and take 4-7 products ensuring at least 2 categories represented
+  const shuffled = [...TEST_PRODUCTS].sort(() => Math.random() - 0.5);
+  const count = rand(4, 7, 1);
+  const picked = shuffled.slice(0, count);
+
+  return picked.map(p => {
+    const grams = rand(p.min, p.max, p.step);
+    const lineTotal = p.unit === 'Piezas'
+      ? p.price * grams
+      : Math.round(p.price * grams / 1000 * 100) / 100;
+    return {
+      productName: p.name,
+      coverimage: '',
+      unitPrice: lineTotal,
+      pricePerKg: p.price,
+      grams,
+      unitType: p.unit,
+    };
+  });
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -802,48 +915,57 @@ export default function PedidosPage() {
   }
 
   const [creatingTest, setCreatingTest] = useState(false);
+  const [testCount, setTestCount] = useState(1);
 
-  async function createTestOrder() {
+  async function createTestOrders() {
     if (creatingTest) return;
     setCreatingTest(true);
     try {
-      // Create a realistic test order
-      const orderRef = await addDoc(collection(db, 'orders'), {
-        nombrecliente: '🧪 Pedido de Prueba',
-        status: 'Pendiente',
-        driverTag: '',
-        driverStatusText: '',
-        subtotal: 247.50,
-        shippingFee: 35.00,
-        total: 282.50,
-        street: 'Av. Insurgentes',
-        number: '123',
-        neighborhood: 'Col. Centro',
-        postalCode: '37000',
-        referenceNote: 'Casa blanca, portón azul — PEDIDO DE PRUEBA',
-        showorder: true,
-        isTest: true,
-        createdAt: serverTimestamp(),
-        userRef: null,
-        location: null,
-      });
+      const usedAddressIdxs: number[] = [];
 
-      // Add realistic test items (ordersitems subcollection)
-      const testItems = [
-        { productName: 'Manzana Golden',   coverimage: '', unitPrice: 45.00, pricePerKg: 45.00, grams: 1000, unitType: 'Gramos' },
-        { productName: 'Fresas',            coverimage: '', unitPrice: 125.00, pricePerKg: 125.00, grams: 500, unitType: 'Gramos' },
-        { productName: 'Aguacate Hass',     coverimage: '', unitPrice: 38.00, pricePerKg: 38.00, grams: 3,    unitType: 'Piezas' },
-        { productName: 'Espinaca Baby',     coverimage: '', unitPrice: 28.00, pricePerKg: 28.00, grams: 250,  unitType: 'Gramos' },
-        { productName: 'Limón Persa',       coverimage: '', unitPrice: 22.00, pricePerKg: 22.00, grams: 750,  unitType: 'Gramos' },
-      ];
+      for (let i = 0; i < testCount; i++) {
+        // Pick a unique address for each order
+        let addrIdx: number;
+        do { addrIdx = Math.floor(Math.random() * TEST_ADDRESSES.length); }
+        while (usedAddressIdxs.includes(addrIdx) && usedAddressIdxs.length < TEST_ADDRESSES.length);
+        usedAddressIdxs.push(addrIdx);
 
-      for (const item of testItems) {
-        await addDoc(collection(db, 'orders', orderRef.id, 'ordersitems'), item);
+        const addr = TEST_ADDRESSES[addrIdx];
+        const name = pickRandom(FAKE_NAMES);
+        const items = buildRandomItems();
+
+        const subtotal = Math.round(items.reduce((s, it) => s + it.unitPrice, 0) * 100) / 100;
+        const shipping = 35.00;
+        const total = Math.round((subtotal + shipping) * 100) / 100;
+
+        const orderRef = await addDoc(collection(db, 'orders'), {
+          nombrecliente: name,
+          status: 'Pendiente',
+          driverTag: '',
+          driverStatusText: '',
+          subtotal,
+          shippingFee: shipping,
+          total,
+          street: addr.street,
+          number: addr.number,
+          neighborhood: addr.neighborhood,
+          postalCode: addr.postalCode,
+          referenceNote: addr.referenceNote,
+          location: new GeoPoint(addr.lat, addr.lng),
+          showorder: true,
+          isTest: true,
+          createdAt: serverTimestamp(),
+          userRef: null,
+        });
+
+        for (const item of items) {
+          await addDoc(collection(db, 'orders', orderRef.id, 'ordersitems'), item);
+        }
       }
 
-      alert('✅ Pedido de prueba creado. Aparece arriba en la lista marcado con 🧪. Puedes gestionar su estado, imprimir tickets, verlo en el vaciado y eliminarlo cuando termines.');
+      alert(`✅ ${testCount} pedido${testCount > 1 ? 's' : ''} de prueba creado${testCount > 1 ? 's' : ''} con direcciones reales de León y productos variados. Aparecen arriba marcados con 🧪.`);
     } catch (e) {
-      alert('Error al crear pedido de prueba: ' + e);
+      alert('Error: ' + e);
     } finally {
       setCreatingTest(false);
     }
@@ -881,15 +1003,31 @@ export default function PedidosPage() {
             {orders.length} pedidos totales
           </p>
         </div>
-        <button
-          onClick={createTestOrder}
-          disabled={creatingTest}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all"
-          style={{ borderColor: '#D1D5DB', color: '#6B7280', background: creatingTest ? '#F9FAFB' : 'white' }}
-          title="Crea un pedido de prueba con datos realistas para validar el panel"
-        >
-          {creatingTest ? '⏳ Creando...' : '🧪 Pedido de prueba'}
-        </button>
+        <div className="flex items-center gap-1 border rounded-xl overflow-hidden"
+          style={{ borderColor: '#D1D5DB', background: 'white' }}>
+          {/* Count selector */}
+          <div className="flex border-r" style={{ borderColor: '#E5E7EB' }}>
+            {[1, 2, 3].map(n => (
+              <button
+                key={n}
+                onClick={() => setTestCount(n)}
+                className="w-8 h-8 text-xs font-bold transition-all"
+                style={{
+                  background: testCount === n ? '#FEF3C7' : 'transparent',
+                  color: testCount === n ? '#92400E' : '#9CA3AF',
+                }}
+              >{n}</button>
+            ))}
+          </div>
+          <button
+            onClick={createTestOrders}
+            disabled={creatingTest}
+            className="flex items-center gap-1.5 px-3 h-8 text-xs font-semibold transition-all"
+            style={{ color: creatingTest ? '#9CA3AF' : '#6B7280' }}
+          >
+            {creatingTest ? '⏳ Creando...' : '🧪 Pedido de prueba'}
+          </button>
+        </div>
       </div>
 
       <div className="mb-4">
