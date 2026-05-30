@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import {
   collection, query, orderBy, onSnapshot,
-  getDocs, Timestamp, updateDoc, deleteDoc, doc, serverTimestamp,
+  getDocs, Timestamp, updateDoc, deleteDoc, doc, serverTimestamp, addDoc,
 } from 'firebase/firestore';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -39,6 +39,7 @@ interface Order {
   cancelReason?: string;
   createdAt: Date | null;
   items: OrderItem[];
+  isTest?: boolean;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -549,8 +550,20 @@ function OrderCard({
   return (
     <div
       className="bg-white rounded-2xl border mb-4"
-      style={{ borderColor: isCancelado ? '#FFCDD2' : '#E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+      style={{
+        borderColor: order.isTest ? '#FCD34D' : isCancelado ? '#FFCDD2' : '#E5E7EB',
+        boxShadow: order.isTest ? '0 0 0 2px #FEF3C7' : '0 1px 4px rgba(0,0,0,0.05)',
+      }}
     >
+      {/* Test order banner */}
+      {order.isTest && (
+        <div className="px-5 py-2 flex items-center gap-2 rounded-t-2xl"
+          style={{ background: '#FEF3C7', borderBottom: '1px solid #FCD34D' }}>
+          <span className="text-xs font-bold" style={{ color: '#92400E' }}>
+            🧪 PEDIDO DE PRUEBA — no es un pedido real
+          </span>
+        </div>
+      )}
       {/* Header row */}
       <div className="flex items-start justify-between px-5 pt-4 pb-3">
         <div className="flex-1 min-w-0">
@@ -613,13 +626,15 @@ function OrderCard({
           >
             🖨️ Ticket
           </button>
-          {(isEntregado || isCancelado) && (
+          {(isEntregado || isCancelado || order.isTest) && (
             <button
               onClick={onDelete}
               className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all"
-              style={{ background: '#F9FAFB', color: '#9CA3AF', borderColor: '#E5E7EB' }}
+              style={order.isTest
+                ? { background: '#FEF3C7', color: '#92400E', borderColor: '#FCD34D' }
+                : { background: '#F9FAFB', color: '#9CA3AF', borderColor: '#E5E7EB' }}
             >
-              🗑️ Eliminar
+              🗑️ {order.isTest ? 'Eliminar prueba' : 'Eliminar'}
             </button>
           )}
         </div>
@@ -759,6 +774,7 @@ export default function PedidosPage() {
           referenceNote: data.referenceNote ?? '',
           cancelReason: data.cancelReason ?? '',
           createdAt: ts instanceof Timestamp ? ts.toDate() : null,
+          isTest: data.isTest === true,
           items: [] as OrderItem[],
         } as Order;
       });
@@ -782,6 +798,54 @@ export default function PedidosPage() {
       await deleteDoc(doc(db, 'orders', orderId));
     } catch (e) {
       alert('Error al eliminar: ' + e);
+    }
+  }
+
+  const [creatingTest, setCreatingTest] = useState(false);
+
+  async function createTestOrder() {
+    if (creatingTest) return;
+    setCreatingTest(true);
+    try {
+      // Create a realistic test order
+      const orderRef = await addDoc(collection(db, 'orders'), {
+        nombrecliente: '🧪 Pedido de Prueba',
+        status: 'Pendiente',
+        driverTag: '',
+        driverStatusText: '',
+        subtotal: 247.50,
+        shippingFee: 35.00,
+        total: 282.50,
+        street: 'Av. Insurgentes',
+        number: '123',
+        neighborhood: 'Col. Centro',
+        postalCode: '37000',
+        referenceNote: 'Casa blanca, portón azul — PEDIDO DE PRUEBA',
+        showorder: true,
+        isTest: true,
+        createdAt: serverTimestamp(),
+        userRef: null,
+        location: null,
+      });
+
+      // Add realistic test items (ordersitems subcollection)
+      const testItems = [
+        { productName: 'Manzana Golden',   coverimage: '', unitPrice: 45.00, pricePerKg: 45.00, grams: 1000, unitType: 'Gramos' },
+        { productName: 'Fresas',            coverimage: '', unitPrice: 125.00, pricePerKg: 125.00, grams: 500, unitType: 'Gramos' },
+        { productName: 'Aguacate Hass',     coverimage: '', unitPrice: 38.00, pricePerKg: 38.00, grams: 3,    unitType: 'Piezas' },
+        { productName: 'Espinaca Baby',     coverimage: '', unitPrice: 28.00, pricePerKg: 28.00, grams: 250,  unitType: 'Gramos' },
+        { productName: 'Limón Persa',       coverimage: '', unitPrice: 22.00, pricePerKg: 22.00, grams: 750,  unitType: 'Gramos' },
+      ];
+
+      for (const item of testItems) {
+        await addDoc(collection(db, 'orders', orderRef.id, 'ordersitems'), item);
+      }
+
+      alert('✅ Pedido de prueba creado. Aparece arriba en la lista marcado con 🧪. Puedes gestionar su estado, imprimir tickets, verlo en el vaciado y eliminarlo cuando termines.');
+    } catch (e) {
+      alert('Error al crear pedido de prueba: ' + e);
+    } finally {
+      setCreatingTest(false);
     }
   }
 
@@ -810,11 +874,22 @@ export default function PedidosPage() {
 
   return (
     <div className="p-6 no-print">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#1A1A1A' }}>Pedidos</h1>
-        <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
-          {orders.length} pedidos totales
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: '#1A1A1A' }}>Pedidos</h1>
+          <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+            {orders.length} pedidos totales
+          </p>
+        </div>
+        <button
+          onClick={createTestOrder}
+          disabled={creatingTest}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all"
+          style={{ borderColor: '#D1D5DB', color: '#6B7280', background: creatingTest ? '#F9FAFB' : 'white' }}
+          title="Crea un pedido de prueba con datos realistas para validar el panel"
+        >
+          {creatingTest ? '⏳ Creando...' : '🧪 Pedido de prueba'}
+        </button>
       </div>
 
       <div className="mb-4">
