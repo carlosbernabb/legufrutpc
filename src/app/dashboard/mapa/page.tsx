@@ -40,6 +40,8 @@ interface AppConfigData {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
+const ORIGIN = { lat: 21.07364, lng: -101.68435 }; // Punto de salida conductores
+
 const SLOT_STYLE = {
   1: { color: '#7B1FA2', label: 'Driver #1', emoji: '🟣' },
   2: { color: '#1565C0', label: 'Driver #2', emoji: '🔵' },
@@ -164,10 +166,30 @@ export default function MapaPage() {
       if (destroyed || !containerRef.current) return;
 
       const map = L.map(containerRef.current, {
-        center: [21.1236, -101.6823],
-        zoom: 13,
+        center: [ORIGIN.lat, ORIGIN.lng],
+        zoom: 14,
         zoomControl: true,
       });
+
+      // Bodega / punto de salida
+      const homeIcon = L.divIcon({
+        html: `<div style="
+          background:#2D5016;color:white;
+          font-size:18px;width:38px;height:38px;
+          border-radius:10px;border:3px solid white;
+          box-shadow:0 3px 12px rgba(0,0,0,0.4);
+          display:flex;align-items:center;justify-content:center;
+        ">🏪</div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+        className: '',
+      });
+      L.marker([ORIGIN.lat, ORIGIN.lng], { icon: homeIcon })
+        .addTo(map)
+        .bindPopup(`<div style="font-family:system-ui,sans-serif;font-weight:800;font-size:13px;color:#2D5016">
+          🏪 Punto de salida<br>
+          <span style="font-weight:400;font-size:11px;color:#6B7280">León, Guanajuato</span>
+        </div>`);
 
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         attribution: '© OpenStreetMap © CartoDB',
@@ -261,70 +283,84 @@ export default function MapaPage() {
       Object.values(driverPinsRef.current).forEach((m: any) => { if (m?.remove) m.remove(); });
       driverPinsRef.current = {};
 
-      drivers.forEach(driver => {
-        const style = SLOT_STYLE[driver.slot] ?? { color: '#5C35A0', label: driver.driverTag };
-        const time  = driver.updatedAt
-          ? driver.updatedAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-          : '—';
+      const slotEmails = [appConfig.driver1Email, appConfig.driver2Email, appConfig.driver3Email];
 
-        // Active orders for this driver
+      // Show all 3 slots — at GPS location if active, at ORIGIN if not
+      [1, 2, 3].forEach(slotN => {
+        const email = slotEmails[slotN - 1];
+        if (!email) return; // Skip unassigned slots
+
+        const style      = SLOT_STYLE[slotN];
+        const liveDriver = drivers.find(d => d.slot === slotN);
+        const hasGps     = !!liveDriver;
+        const lat        = liveDriver?.lat  ?? ORIGIN.lat;
+        const lng        = liveDriver?.lng  ?? ORIGIN.lng;
+        const time       = liveDriver?.updatedAt
+          ? liveDriver.updatedAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+          : null;
+
         const activeOrders = orders.filter(
-          o => o.driverTag === driver.driverTag && o.status === 'Reparto'
+          o => o.driverTag === `Driver #${slotN}` && o.status === 'Reparto'
         );
 
         const icon = L.divIcon({
           html: `
-            <div style="
-              position:relative;
-              width:42px;height:42px;
-            ">
+            <div style="position:relative;width:44px;height:44px;">
               <div style="
-                width:42px;height:42px;
+                width:44px;height:44px;
                 background:${style.color};
                 border-radius:50%;
                 border:3px solid white;
-                box-shadow:0 3px 12px rgba(0,0,0,0.4);
+                box-shadow:0 3px 14px rgba(0,0,0,${hasGps ? '0.45' : '0.2'});
                 display:flex;align-items:center;justify-content:center;
                 font-size:20px;
+                opacity:${hasGps ? '1' : '0.55'};
               ">🚗</div>
               <div style="
-                position:absolute;top:-4px;right:-4px;
+                position:absolute;top:-5px;right:-5px;
                 background:white;
-                border:2px solid ${style.color};
+                border:2.5px solid ${style.color};
                 border-radius:50%;
-                width:18px;height:18px;
+                width:20px;height:20px;
                 font-size:9px;font-weight:900;
                 display:flex;align-items:center;justify-content:center;
                 color:${style.color};
-              ">#${driver.slot}</div>
+                opacity:${hasGps ? '1' : '0.55'};
+              ">#${slotN}</div>
+              ${hasGps ? `<div style="
+                position:absolute;bottom:-3px;left:50%;transform:translateX(-50%);
+                width:8px;height:8px;background:#22C55E;border-radius:50%;
+                border:1.5px solid white;
+              "></div>` : ''}
             </div>`,
-          iconSize:   [42, 42],
-          iconAnchor: [21, 21],
+          iconSize:   [44, 44],
+          iconAnchor: [22, 22],
           className: '',
         });
 
         const ordersHtml = activeOrders.length
           ? activeOrders.map(o =>
-              `<div style="margin-top:5px;font-size:11px;color:#374151;padding:4px 8px;background:#F3F4F6;border-radius:6px">
+              `<div style="margin-top:4px;font-size:11px;padding:4px 8px;background:#F3F4F6;border-radius:6px">
                 📦 <b>${o.nombrecliente}</b><br>
                 <span style="color:#6B7280">${o.street} #${o.number}</span>
               </div>`
             ).join('')
-          : `<div style="margin-top:5px;font-size:11px;color:#9CA3AF">Sin pedidos activos</div>`;
+          : `<div style="margin-top:4px;font-size:11px;color:#9CA3AF">${hasGps ? 'Sin pedidos activos' : 'En punto de salida'}</div>`;
 
-        const marker = L.marker([driver.lat, driver.lng], { icon })
+        const statusLine = hasGps
+          ? `<span style="color:#15803D;font-size:10px">● En ruta · GPS ${time}</span>`
+          : `<span style="color:#9CA3AF;font-size:10px">● En punto de salida</span>`;
+
+        const marker = L.marker([lat, lng], { icon })
           .addTo(mapRef.current)
           .bindPopup(`
             <div style="font-family:system-ui,sans-serif;min-width:220px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <div style="
-                  width:10px;height:10px;border-radius:50%;
-                  background:${style.color};flex-shrink:0;
-                "></div>
-                <span style="font-weight:800;font-size:14px;color:#1A1A1A">${style.label}</span>
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+                <div style="width:10px;height:10px;border-radius:50%;background:${style.color};flex-shrink:0"></div>
+                <span style="font-weight:800;font-size:14px;color:#111827">${style.label}</span>
               </div>
-              <div style="font-size:11px;color:#6B7280">${driver.name}</div>
-              <div style="font-size:10px;color:#9CA3AF;margin-top:2px">GPS: ${time}</div>
+              <div style="font-size:11px;color:#6B7280;margin-bottom:4px">${liveDriver?.name || email}</div>
+              ${statusLine}
               <div style="margin-top:8px;font-size:11px;font-weight:700;color:#374151">
                 Pedidos en ruta (${activeOrders.length})
               </div>
@@ -332,12 +368,12 @@ export default function MapaPage() {
             </div>
           `);
 
-        driverPinsRef.current[driver.slot] = marker;
+        driverPinsRef.current[slotN] = marker;
       });
     }
     update();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drivers, orders]);
+  }, [drivers, orders, appConfig]);
 
   // ── Fly to selected order ─────────────────────────────────────────────────
   useEffect(() => {
