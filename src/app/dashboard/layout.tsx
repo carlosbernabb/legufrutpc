@@ -98,8 +98,55 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto" style={{ background: '#F8F4EF' }}>
+      {/* ── Branch decorations (fixed, repeat-y, faded) ── */}
+      {/* Left branch — starts right after the sidebar */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          left: '224px',          // w-56 = 224 px
+          width: '110px',
+          backgroundImage: 'url(https://cdn.shopify.com/s/files/1/0630/0100/2073/files/Ramapng.png?v=1780769052)',
+          backgroundRepeat: 'repeat-y',
+          backgroundSize: '100% auto',
+          backgroundPosition: 'top left',
+          opacity: 0.13,
+          pointerEvents: 'none',
+          zIndex: 5,
+          // Fade the inner edge so branches dissolve into the page
+          WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)',
+          maskImage: 'linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)',
+        }}
+      />
+      {/* Right branch — mirrored */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: '110px',
+          backgroundImage: 'url(https://cdn.shopify.com/s/files/1/0630/0100/2073/files/Ramapng.png?v=1780769052)',
+          backgroundRepeat: 'repeat-y',
+          backgroundSize: '100% auto',
+          backgroundPosition: 'top left',
+          opacity: 0.13,
+          pointerEvents: 'none',
+          zIndex: 5,
+          transform: 'scaleX(-1)',  // mirror horizontally
+          WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)',
+          maskImage: 'linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)',
+        }}
+      />
+
+      {/* Main content — z-index above the branches */}
+      <main
+        className="flex-1 overflow-auto"
+        style={{ background: '#F8F4EF', position: 'relative', zIndex: 10 }}
+      >
         {children}
       </main>
     </div>
