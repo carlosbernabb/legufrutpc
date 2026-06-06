@@ -194,23 +194,29 @@ function TicketContent({ order, type }: { order: Order; type: 'negocio' | 'clien
     conductor: '🚚 TICKET — CONDUCTOR',
   };
 
+  const W = 32; // chars per line
+  function pad(left: string, right: string): string {
+    const maxL = W - right.length - 1;
+    const l = left.length > maxL ? left.slice(0, maxL - 1) + '.' : left;
+    return l + ' '.repeat(W - l.length - right.length) + right;
+  }
+  const SEP = '--------------------------------';
+
   return (
-    <div className="ticket-block" style={{ fontFamily: 'monospace', fontSize: 12, maxWidth: 300 }}>
-      <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 14, marginBottom: 8 }}>
+    <div className="ticket-block" style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: 11, width: '100%' }}>
+      <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 12, marginBottom: 2 }}>
         {titles[type]}
       </div>
-      <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        ─────────────────────────
-      </div>
+      <div style={{ fontSize: 10, marginBottom: 2 }}>{SEP}</div>
       <div><b>LeguFrut</b></div>
       <div>Pedido: #{order.id.substring(0, 10)}</div>
       <div>Fecha: {fmtDate(order.createdAt)}</div>
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: 3 }}>
         <b>CLIENTE:</b> {order.nombrecliente || 'Sin nombre'}
       </div>
 
       {(type === 'negocio' || type === 'conductor') && (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 3 }}>
           <b>ENTREGA:</b><br />
           {order.street} #{order.number}<br />
           Col. {order.neighborhood}, CP {order.postalCode}<br />
@@ -219,39 +225,32 @@ function TicketContent({ order, type }: { order: Order; type: 'negocio' | 'clien
         </div>
       )}
 
-      <div style={{ marginTop: 8 }}>
+      <div style={{ marginTop: 4 }}>
         <b>PRODUCTOS:</b>
-        <div style={{ marginTop: 4 }}>
-          {order.items.map((item, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>{item.productName} ({fmtQty(item.grams, item.unitType)})</span>
-              <span>{fmtMoney(item.unitPrice)}</span>
-            </div>
-          ))}
-        </div>
+        <pre style={{ fontFamily: 'inherit', fontSize: 'inherit', margin: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {order.items.map((item) =>
+            pad(`${item.productName} (${fmtQty(item.grams, item.unitType)})`, fmtMoney(item.unitPrice))
+          ).join('\n')}
+        </pre>
       </div>
 
-      <div style={{ marginTop: 6, borderTop: '1px solid #999', paddingTop: 6 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>Subtotal:</span><span>{fmtMoney(order.subtotal)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>Envío:</span><span>{fmtMoney(order.shippingFee)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: 4 }}>
-          <span>TOTAL:</span><span>{fmtMoney(order.total)}</span>
-        </div>
+      <div style={{ marginTop: 3, borderTop: '1px solid #999', paddingTop: 3 }}>
+        <pre style={{ fontFamily: 'inherit', fontSize: 'inherit', margin: 0 }}>
+          {[
+            pad('Subtotal:', fmtMoney(order.subtotal)),
+            pad('Envio:', fmtMoney(order.shippingFee)),
+            pad('TOTAL:', fmtMoney(order.total)),
+          ].join('\n')}
+        </pre>
       </div>
 
       {type === 'negocio' && (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 3 }}>
           <b>Estado:</b> {order.driverStatusText || order.status}
         </div>
       )}
 
-      <div style={{ textAlign: 'center', marginTop: 8 }}>
-        ─────────────────────────
-      </div>
+      <div style={{ fontSize: 10, marginTop: 4 }}>{SEP}</div>
     </div>
   );
 }
@@ -264,21 +263,30 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
   function printTicket(type: 'negocio' | 'cliente' | 'conductor' | 'todos') {
     const el = document.getElementById(type === 'todos' ? 'print-todos' : `print-${type}`);
     if (!el) return;
-    const win = window.open('', '_blank', 'width=400,height=600');
+    const win = window.open('', '_blank', 'width=360,height=700');
     if (!win) return;
     win.document.write(`
       <html><head><title>Ticket LeguFrut</title>
       <style>
-        body { font-family: monospace; font-size: 12px; margin: 16px; }
-        .ticket-block { margin-bottom: 24px; max-width: 300px; }
-        .ticket-separator { border-top: 2px dashed #999; margin: 16px 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        @page { size: 80mm auto; margin: 0; }
+        body {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 11px;
+          line-height: 1.3;
+          padding: 3px 4px;
+          width: 280px;
+          color: #000;
+          background: #fff;
+        }
+        .ticket-block { width: 100%; margin-bottom: 4px; }
+        .ticket-separator { border-top: 1px dashed #999; margin: 5px 0; }
       </style>
       </head><body>${el.innerHTML}</body></html>
     `);
     win.document.close();
     win.focus();
-    win.print();
-    win.close();
+    setTimeout(() => { win.print(); win.close(); }, 300);
   }
 
   return (

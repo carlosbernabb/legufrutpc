@@ -224,12 +224,13 @@ export default function VaciadoPage() {
       <title>Vaciado ${formatShortDate(selectedDateObj)}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        @page { size: 80mm auto; margin: 0; }
         body {
           font-family: 'Courier New', Courier, monospace;
-          font-size: 12px;
-          line-height: 1.5;
-          width: 300px;
-          padding: 8px 4px;
+          font-size: 11px;
+          line-height: 1.35;
+          width: 280px;
+          padding: 3px 4px;
           color: #000;
           background: #fff;
         }
@@ -238,10 +239,6 @@ export default function VaciadoPage() {
           word-break: break-word;
           font-family: inherit;
           font-size: inherit;
-        }
-        @media print {
-          body { margin: 0; padding: 4px; }
-          @page { margin: 4mm; }
         }
       </style>
     </head><body><pre>${text}</pre></body></html>`;
