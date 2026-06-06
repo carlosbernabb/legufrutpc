@@ -203,7 +203,7 @@ function TicketContent({ order, type }: { order: Order; type: 'negocio' | 'clien
   const SEP = '--------------------------------';
 
   return (
-    <div className="ticket-block" style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: 11, width: '100%' }}>
+    <div className="ticket-block" style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: 11, fontWeight: 'bold', width: '100%' }}>
       <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 12, marginBottom: 2 }}>
         {titles[type]}
       </div>
@@ -273,6 +273,7 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
+          font-weight: bold;
           line-height: 1.3;
           padding: 3px 4px;
           width: 280px;

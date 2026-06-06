@@ -228,6 +228,7 @@ export default function VaciadoPage() {
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
+          font-weight: bold;
           line-height: 1.35;
           width: 280px;
           padding: 3px 4px;
