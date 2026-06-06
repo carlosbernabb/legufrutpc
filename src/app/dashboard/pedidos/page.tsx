@@ -274,7 +274,7 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
       <html><head><title>Ticket LeguFrut</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: 80mm auto; margin: 2mm 3mm; }
+        @page { size: 80mm auto; margin: 0; }
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
@@ -283,11 +283,10 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
           width: 100%;
           color: #000;
           background: #fff;
-          padding: 2px 0;
+          padding: 3px 10px;
         }
         .ticket-block { width: 100%; margin-bottom: 4px; }
         .ticket-separator { border-top: 1px dashed #777; margin: 5px 0; }
-        div { display: block; }
       </style>
       </head><body>${el.innerHTML}</body></html>
     `);

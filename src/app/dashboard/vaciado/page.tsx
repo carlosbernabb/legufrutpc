@@ -168,7 +168,7 @@ export default function VaciadoPage() {
       statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos';
     const totalVentas = filteredOrders.reduce((s, o) => s + o.total, 0);
 
-    const base = 'font-family:\'Courier New\',Courier,monospace;font-size:11px;font-weight:bold;line-height:1.4;color:#000;';
+    // Helpers — sin wrapper externo, los estilos base van en el <body> del print
     const row  = (l: string, r: string) =>
       `<div style="display:flex;justify-content:space-between;gap:6px;">` +
       `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l}</span>` +
@@ -178,7 +178,7 @@ export default function VaciadoPage() {
     const hr   = () => `<div style="border-top:1px dashed #777;margin:2px 0;"></div>`;
     const note = (t: string) => `<div style="font-size:10px;padding-left:4px;">${t}</div>`;
 
-    let h = `<div style="${base}width:100%;">`;
+    let h = '';
     h += hr2();
     h += ctr('<b>LEGUFRUT ADMIN</b>');
     h += ctr('VACIADO DE COMPRAS');
@@ -214,7 +214,7 @@ export default function VaciadoPage() {
           h += note('(sin productos)');
         } else {
           for (const item of o.items) {
-            h += `<div style="display:flex;justify-content:space-between;gap:6px;padding-left:4px;">` +
+            h += `<div style="display:flex;justify-content:space-between;gap:6px;padding-left:6px;">` +
               `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.productName)}</span>` +
               `<span style="flex-shrink:0;">${esc(formatQty(item.quantity, item.unit))}</span></div>`;
           }
@@ -228,7 +228,6 @@ export default function VaciadoPage() {
     h += hr2();
     h += row('<b>TOTAL VENTAS:</b>', `<b>$${totalVentas.toFixed(2)}</b>`);
     h += hr2();
-    h += '</div>';
     return h;
   }
 
@@ -239,7 +238,7 @@ export default function VaciadoPage() {
       <title>Vaciado ${formatShortDate(selectedDateObj)}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        @page { size: 80mm auto; margin: 2mm 3mm; }
+        @page { size: 80mm auto; margin: 0; }
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
@@ -248,9 +247,8 @@ export default function VaciadoPage() {
           width: 100%;
           color: #000;
           background: #fff;
-          padding: 2px 0;
+          padding: 3px 10px;
         }
-        div { display: block; }
       </style>
     </head><body>${receipt}</body></html>`;
 
