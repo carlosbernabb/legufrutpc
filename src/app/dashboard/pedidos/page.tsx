@@ -188,69 +188,74 @@ function statusColor(s: string, ds: string): { bg: string; fg: string; label: st
 // ── Ticket print component (rendered in DOM, shown only on print) ──────────
 
 function TicketContent({ order, type }: { order: Order; type: 'negocio' | 'cliente' | 'conductor' }) {
-  const titles = {
-    negocio: '🏪 TICKET — NEGOCIO',
-    cliente: '🧾 TICKET — CLIENTE',
-    conductor: '🚚 TICKET — CONDUCTOR',
+  const titles: Record<typeof type, string> = {
+    negocio:   'TICKET — NEGOCIO',
+    cliente:   'TICKET — CLIENTE',
+    conductor: 'TICKET — CONDUCTOR',
   };
 
-  const W = 32; // chars per line
-  function pad(left: string, right: string): string {
-    const maxL = W - right.length - 1;
-    const l = left.length > maxL ? left.slice(0, maxL - 1) + '.' : left;
-    return l + ' '.repeat(W - l.length - right.length) + right;
-  }
-  const SEP = '--------------------------------';
+  const HR = ({ solid }: { solid?: boolean }) => (
+    <div style={{ borderTop: solid ? '2px solid #000' : '1px dashed #777', margin: '3px 0' }} />
+  );
+
+  const Row = ({ left, right }: { left: string; right: string }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {left}
+      </span>
+      <span style={{ flexShrink: 0 }}>{right}</span>
+    </div>
+  );
 
   return (
-    <div className="ticket-block" style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: 11, fontWeight: 'bold', width: '100%' }}>
-      <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 12, marginBottom: 2 }}>
-        {titles[type]}
-      </div>
-      <div style={{ fontSize: 10, marginBottom: 2 }}>{SEP}</div>
-      <div><b>LeguFrut</b></div>
-      <div>Pedido: #{order.id.substring(0, 10)}</div>
+    <div className="ticket-block" style={{
+      fontFamily: "'Courier New', Courier, monospace",
+      fontSize: 11,
+      fontWeight: 'bold',
+      lineHeight: 1.4,
+      width: '100%',
+    }}>
+      <HR solid />
+      <div style={{ textAlign: 'center', fontSize: 12 }}>{titles[type]}</div>
+      <HR solid />
+
+      <div>LeguFrut | #{order.id.substring(0, 10)}</div>
       <div>Fecha: {fmtDate(order.createdAt)}</div>
-      <div style={{ marginTop: 3 }}>
-        <b>CLIENTE:</b> {order.nombrecliente || 'Sin nombre'}
-      </div>
+      <div>CLIENTE: {order.nombrecliente || 'Sin nombre'}</div>
 
       {(type === 'negocio' || type === 'conductor') && (
-        <div style={{ marginTop: 3 }}>
-          <b>ENTREGA:</b><br />
-          {order.street} #{order.number}<br />
-          Col. {order.neighborhood}, CP {order.postalCode}<br />
-          {order.referenceNote && <>Ref: {order.referenceNote}<br /></>}
-          {order.driverTag && <>Driver: {order.driverTag}</>}
-        </div>
+        <>
+          <HR />
+          <div>ENTREGA:</div>
+          <div>{order.street} #{order.number}</div>
+          <div>Col. {order.neighborhood}, CP {order.postalCode}</div>
+          {order.referenceNote && <div>Ref: {order.referenceNote}</div>}
+          {order.driverTag && <div>Driver: {order.driverTag}</div>}
+        </>
       )}
 
-      <div style={{ marginTop: 4 }}>
-        <b>PRODUCTOS:</b>
-        <pre style={{ fontFamily: 'inherit', fontSize: 'inherit', margin: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {order.items.map((item) =>
-            pad(`${item.productName} (${fmtQty(item.grams, item.unitType)})`, fmtMoney(item.unitPrice))
-          ).join('\n')}
-        </pre>
-      </div>
+      <HR />
+      <div>PRODUCTOS:</div>
+      {order.items.map((item, i) => (
+        <Row
+          key={i}
+          left={`${item.productName} (${fmtQty(item.grams, item.unitType)})`}
+          right={fmtMoney(item.unitPrice)}
+        />
+      ))}
 
-      <div style={{ marginTop: 3, borderTop: '1px solid #999', paddingTop: 3 }}>
-        <pre style={{ fontFamily: 'inherit', fontSize: 'inherit', margin: 0 }}>
-          {[
-            pad('Subtotal:', fmtMoney(order.subtotal)),
-            pad('Envio:', fmtMoney(order.shippingFee)),
-            pad('TOTAL:', fmtMoney(order.total)),
-          ].join('\n')}
-        </pre>
-      </div>
+      <HR solid />
+      <Row left="Subtotal:" right={fmtMoney(order.subtotal)} />
+      <Row left="Envio:" right={fmtMoney(order.shippingFee)} />
+      <Row left="TOTAL:" right={fmtMoney(order.total)} />
 
       {type === 'negocio' && (
-        <div style={{ marginTop: 3 }}>
-          <b>Estado:</b> {order.driverStatusText || order.status}
-        </div>
+        <>
+          <HR />
+          <div>Estado: {order.driverStatusText || order.status}</div>
+        </>
       )}
-
-      <div style={{ fontSize: 10, marginTop: 4 }}>{SEP}</div>
+      <HR solid />
     </div>
   );
 }
@@ -269,19 +274,20 @@ function PrintModal({ order, onClose }: { order: Order; onClose: () => void }) {
       <html><head><title>Ticket LeguFrut</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: 80mm auto; margin: 0; }
+        @page { size: 80mm auto; margin: 2mm 3mm; }
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
           font-weight: bold;
-          line-height: 1.3;
-          padding: 3px 4px;
-          width: 280px;
+          line-height: 1.4;
+          width: 100%;
           color: #000;
           background: #fff;
+          padding: 2px 0;
         }
         .ticket-block { width: 100%; margin-bottom: 4px; }
-        .ticket-separator { border-top: 1px dashed #999; margin: 5px 0; }
+        .ticket-separator { border-top: 1px dashed #777; margin: 5px 0; }
+        div { display: block; }
       </style>
       </head><body>${el.innerHTML}</body></html>
     `);

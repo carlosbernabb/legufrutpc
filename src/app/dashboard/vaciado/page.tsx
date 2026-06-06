@@ -158,91 +158,101 @@ export default function VaciadoPage() {
     });
   }
 
-  const SEP  = '--------------------------------';
-  const SEP2 = '================================';
-
-  function padRow(left: string, right: string, width = 32): string {
-    const maxLeft = width - right.length - 1;
-    const l = left.length > maxLeft ? left.slice(0, maxLeft - 1) + '.' : left;
-    return l + ' '.repeat(width - l.length - right.length) + right;
+  function esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function buildReceiptText(): string {
+  function buildReceiptHTML(): string {
     const statusLabel =
       statusFilter === 'Pendiente' ? 'Por preparar' :
       statusFilter === 'En Reparto' ? 'En Reparto' : 'Todos';
-
-    const productLines = aggregatedList.map(p => {
-      const qty = formatQty(p.totalQuantity, p.unit);
-      return [
-        padRow(p.productName, qty),
-        `  (${p.orderCount} pedido${p.orderCount !== 1 ? 's' : ''})`,
-        SEP,
-      ].join('\n');
-    }).join('\n');
-
-    const orderLines = filteredOrders.map(o => {
-      const header = `#${o.id.slice(-6).toUpperCase()} ${o.nombrecliente}`;
-      const items = o.items.length === 0
-        ? '  (sin productos)'
-        : o.items.map(item =>
-            '  ' + padRow(item.productName, formatQty(item.quantity, item.unit), 30)
-          ).join('\n');
-      const total = padRow('TOTAL:', `$${o.total.toFixed(2)}`);
-      return [header, items, SEP, total, SEP].join('\n');
-    }).join('\n');
-
     const totalVentas = filteredOrders.reduce((s, o) => s + o.total, 0);
 
-    return [
-      SEP2,
-      '         LEGUFRUT ADMIN         ',
-      '       VACIADO DE COMPRAS       ',
-      SEP2,
-      `Fecha  : ${formatShortDate(selectedDateObj)}`,
-      `Estado : ${statusLabel}`,
-      `Pedidos: ${totalOrders}`,
-      `Prods  : ${aggregatedList.length} distintos`,
-      SEP2,
-      '          QUE COMPRAR           ',
-      SEP2,
-      aggregatedList.length === 0 ? '  (sin productos)' : productLines,
-      SEP2,
-      '      DESGLOSE POR PEDIDO       ',
-      SEP2,
-      filteredOrders.length === 0 ? '  (sin pedidos)' : orderLines,
-      SEP2,
-      padRow('TOTAL VENTAS:', `$${totalVentas.toFixed(2)}`),
-      SEP2,
-    ].join('\n');
+    const base = 'font-family:\'Courier New\',Courier,monospace;font-size:11px;font-weight:bold;line-height:1.4;color:#000;';
+    const row  = (l: string, r: string) =>
+      `<div style="display:flex;justify-content:space-between;gap:6px;">` +
+      `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l}</span>` +
+      `<span style="flex-shrink:0;">${r}</span></div>`;
+    const ctr  = (t: string) => `<div style="text-align:center;">${t}</div>`;
+    const hr2  = () => `<div style="border-top:2px solid #000;margin:3px 0;"></div>`;
+    const hr   = () => `<div style="border-top:1px dashed #777;margin:2px 0;"></div>`;
+    const note = (t: string) => `<div style="font-size:10px;padding-left:4px;">${t}</div>`;
+
+    let h = `<div style="${base}width:100%;">`;
+    h += hr2();
+    h += ctr('<b>LEGUFRUT ADMIN</b>');
+    h += ctr('VACIADO DE COMPRAS');
+    h += hr2();
+    h += row('Fecha:', esc(formatShortDate(selectedDateObj)));
+    h += row('Estado:', esc(statusLabel));
+    h += row('Pedidos:', String(totalOrders));
+    h += row('Productos:', `${aggregatedList.length} distintos`);
+    h += hr2();
+    h += ctr('<b>QUE COMPRAR</b>');
+    h += hr2();
+
+    if (aggregatedList.length === 0) {
+      h += '<div>(sin productos)</div>';
+    } else {
+      for (const p of aggregatedList) {
+        h += row(esc(p.productName), esc(formatQty(p.totalQuantity, p.unit)));
+        h += note(`(${p.orderCount} pedido${p.orderCount !== 1 ? 's' : ''})`);
+        h += hr();
+      }
+    }
+
+    h += hr2();
+    h += ctr('<b>DESGLOSE POR PEDIDO</b>');
+    h += hr2();
+
+    if (filteredOrders.length === 0) {
+      h += '<div>(sin pedidos)</div>';
+    } else {
+      for (const o of filteredOrders) {
+        h += `<div><b>#${o.id.slice(-6).toUpperCase()}</b> ${esc(o.nombrecliente)}</div>`;
+        if (o.items.length === 0) {
+          h += note('(sin productos)');
+        } else {
+          for (const item of o.items) {
+            h += `<div style="display:flex;justify-content:space-between;gap:6px;padding-left:4px;">` +
+              `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.productName)}</span>` +
+              `<span style="flex-shrink:0;">${esc(formatQty(item.quantity, item.unit))}</span></div>`;
+          }
+        }
+        h += hr();
+        h += row('TOTAL:', `$${o.total.toFixed(2)}`);
+        h += hr();
+      }
+    }
+
+    h += hr2();
+    h += row('<b>TOTAL VENTAS:</b>', `<b>$${totalVentas.toFixed(2)}</b>`);
+    h += hr2();
+    h += '</div>';
+    return h;
   }
 
   function doPrint() {
-    const text = buildReceiptText();
+    const receipt = buildReceiptHTML();
     const html = `<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <title>Vaciado ${formatShortDate(selectedDateObj)}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        @page { size: 80mm auto; margin: 0; }
+        @page { size: 80mm auto; margin: 2mm 3mm; }
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 11px;
           font-weight: bold;
-          line-height: 1.35;
-          width: 280px;
-          padding: 3px 4px;
+          line-height: 1.4;
+          width: 100%;
           color: #000;
           background: #fff;
+          padding: 2px 0;
         }
-        pre {
-          white-space: pre-wrap;
-          word-break: break-word;
-          font-family: inherit;
-          font-size: inherit;
-        }
+        div { display: block; }
       </style>
-    </head><body><pre>${text}</pre></body></html>`;
+    </head><body>${receipt}</body></html>`;
 
     const win = window.open('', '_blank', 'width=360,height=700');
     if (!win) return;
@@ -536,25 +546,13 @@ export default function VaciadoPage() {
               <div style={{
                 background: 'white',
                 width: 280,
-                padding: '14px 10px',
+                padding: '8px 10px',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
                 borderRadius: 2,
-                fontFamily: "'Courier New', Courier, monospace",
-                fontSize: 11,
-                lineHeight: 1.55,
-                color: '#000',
                 flexShrink: 0,
-              }}>
-                <pre style={{
-                  fontFamily: 'inherit',
-                  fontSize: 'inherit',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  margin: 0,
-                }}>
-                  {buildReceiptText()}
-                </pre>
-              </div>
+              }}
+                dangerouslySetInnerHTML={{ __html: buildReceiptHTML() }}
+              />
             </div>
 
             {/* Footer */}
