@@ -150,6 +150,8 @@ interface Order {
   postalCode: string;
   referenceNote: string;
   cancelReason?: string;
+  paymentMethod: string;
+  paymentStatus: string;
   createdAt: Date | null;
   items: OrderItem[];
   isTest?: boolean;
@@ -183,6 +185,47 @@ function statusColor(s: string, ds: string): { bg: string; fg: string; label: st
   if (s === 'Confirmado') return { bg: '#E8F5E9', fg: '#2E7D32', label: '✓ Confirmado' };
   if (s === 'Cancelado') return { bg: '#FFEBEE', fg: '#C62828', label: '✕ Cancelado' };
   return { bg: '#F3F4F6', fg: '#374151', label: 'Pendiente' };
+}
+
+// ── Payment chip ───────────────────────────────────────────────────────────
+// Efectivo: informativo (Por cobrar / Pagado al entregar). Tarjeta: clic para
+// alternar Esperando pago ↔ Pagado cuando el dueño confirma en Mercado Pago.
+
+function PaymentChip({ order }: { order: Order }) {
+  const isCard = order.paymentMethod === 'Tarjeta';
+  const paid = order.paymentStatus === 'Pagado';
+  const color = isCard ? (paid ? '#2E7D32' : '#009EE3') : (paid ? '#2E7D32' : '#E65100');
+  const label = isCard
+    ? (paid ? '💳 Tarjeta · Pagado' : '💳 Tarjeta · Esperando pago')
+    : (paid ? '💵 Efectivo · Pagado' : '💵 Efectivo · Por cobrar');
+
+  async function toggle() {
+    if (!isCard) return;
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        paymentStatus: paid ? 'Esperando pago' : 'Pagado',
+      });
+    } catch (e) {
+      alert('Error al actualizar el pago: ' + e);
+    }
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={!isCard}
+      title={isCard ? 'Clic para marcar como pagado / no pagado' : undefined}
+      className="text-xs font-semibold px-2.5 py-1 rounded-full transition-all"
+      style={{
+        background: `${color}1A`,
+        color,
+        border: `1px solid ${color}55`,
+        cursor: isCard ? 'pointer' : 'default',
+      }}
+    >
+      {label}{isCard && !paid ? ' 👆' : ''}
+    </button>
+  );
 }
 
 // ── Ticket print component (rendered in DOM, shown only on print) ──────────
@@ -248,6 +291,12 @@ function TicketContent({ order, type }: { order: Order; type: 'negocio' | 'clien
       <Row left="Subtotal:" right={fmtMoney(order.subtotal)} />
       <Row left="Envio:" right={fmtMoney(order.shippingFee)} />
       <Row left="TOTAL:" right={fmtMoney(order.total)} />
+      <Row
+        left="PAGO:"
+        right={order.paymentMethod === 'Tarjeta'
+          ? (order.paymentStatus === 'Pagado' ? 'TARJETA (PAGADO)' : 'TARJETA (PENDIENTE)')
+          : (order.paymentStatus === 'Pagado' ? 'EFECTIVO (PAGADO)' : 'EFECTIVO - COBRAR')}
+      />
 
       {type === 'negocio' && (
         <>
@@ -706,6 +755,7 @@ function OrderCard({
                 {order.driverTag}
               </span>
             )}
+            <PaymentChip order={order} />
             <span className="text-xs" style={{ color: '#9CA3AF' }}>#{order.id.substring(0, 8)}</span>
           </div>
           <div className="mt-2 flex items-baseline gap-3">
@@ -900,6 +950,8 @@ export default function PedidosPage() {
           postalCode: data.postalCode ?? '',
           referenceNote: data.referenceNote ?? '',
           cancelReason: data.cancelReason ?? '',
+          paymentMethod: data.paymentMethod ?? 'Efectivo',
+          paymentStatus: data.paymentStatus ?? '',
           createdAt: ts instanceof Timestamp ? ts.toDate() : null,
           isTest: data.isTest === true,
           items: [] as OrderItem[],
@@ -951,6 +1003,7 @@ export default function PedidosPage() {
         const subtotal = Math.round(items.reduce((s, it) => s + it.unitPrice, 0) * 100) / 100;
         const shipping = 35.00;
         const total = Math.round((subtotal + shipping) * 100) / 100;
+        const isCard = Math.random() < 0.4;
 
         const orderRef = await addDoc(collection(db, 'orders'), {
           nombrecliente: name,
@@ -960,6 +1013,8 @@ export default function PedidosPage() {
           subtotal,
           shippingFee: shipping,
           total,
+          paymentMethod: isCard ? 'Tarjeta' : 'Efectivo',
+          paymentStatus: isCard ? 'Esperando pago' : 'Por cobrar',
           street: addr.street,
           number: addr.number,
           neighborhood: addr.neighborhood,

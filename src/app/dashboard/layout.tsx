@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -12,11 +13,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, user => {
-      if (user) {
-        setReady(true);
-      } else {
+    const unsub = onAuthStateChanged(auth, async user => {
+      if (!user) {
         router.replace('/login');
+        return;
+      }
+      // Solo cuentas con isadmin pueden usar el panel: cualquier cliente de la
+      // app tiene cuenta Firebase, pero no debe entrar aquí.
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists() && snap.data().isadmin === true) {
+          setReady(true);
+        } else {
+          await signOut(auth);
+          router.replace('/login?e=denied');
+        }
+      } catch {
+        await signOut(auth);
+        router.replace('/login?e=denied');
       }
     });
     return () => unsub();

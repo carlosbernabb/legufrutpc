@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { auth } from '@/lib/firebase';
@@ -12,6 +12,14 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // El layout del dashboard expulsa aquí a las cuentas sin isadmin.
+  useEffect(() => {
+    if (typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('e') === 'denied') {
+      setError('Esta cuenta no tiene permisos de administrador.');
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
