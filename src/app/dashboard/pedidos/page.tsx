@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import {
-  collection, query, orderBy, onSnapshot,
+  collection, query, orderBy, onSnapshot, where,
   getDocs, Timestamp, updateDoc, deleteDoc, doc, serverTimestamp, addDoc, GeoPoint,
 } from 'firebase/firestore';
 
@@ -177,14 +177,193 @@ function fmtQty(grams: number, unitType: string): string {
   return `${grams} g`;
 }
 
-function statusColor(s: string, ds: string): { bg: string; fg: string; label: string } {
+// Un pedido está confirmado si ya se pesó y se guardó el total real.
+// 'Confirmado' en status es el formato viejo, se sigue reconociendo.
+function estaConfirmado(o: Order): boolean {
+  return o.confirmedTotal != null || o.status === 'Confirmado';
+}
+
+function statusColor(o: Order): { bg: string; fg: string; label: string } {
+  const ds = o.driverStatusText;
   if (ds === 'Su pedido ha llegado') return { bg: '#E8F5E9', fg: '#2E7D32', label: 'Entregado' };
   if (ds === 'En camino') return { bg: '#E3F2FD', fg: '#1565C0', label: 'En camino' };
   if (ds === 'En preparación') return { bg: '#FFF3E0', fg: '#E65100', label: 'En preparación' };
-  if (s === 'Reparto') return { bg: '#F3E5F5', fg: '#6A1B9A', label: 'En reparto' };
-  if (s === 'Confirmado') return { bg: '#E8F5E9', fg: '#2E7D32', label: '✓ Confirmado' };
-  if (s === 'Cancelado') return { bg: '#FFEBEE', fg: '#C62828', label: '✕ Cancelado' };
+  if (o.status === 'Reparto') return { bg: '#F3E5F5', fg: '#6A1B9A', label: 'En reparto' };
+  if (o.status === 'Cancelado') return { bg: '#FFEBEE', fg: '#C62828', label: '✕ Cancelado' };
+  if (estaConfirmado(o)) return { bg: '#E8F5E9', fg: '#2E7D32', label: '✓ Confirmado' };
   return { bg: '#F3F4F6', fg: '#374151', label: 'Pendiente' };
+}
+
+// ── Etapas del pedido ──────────────────────────────────────────────────────
+// Las mismas 3 etapas del Panel de Órdenes de la app (Pendientes / Preparando
+// / Entregados), más Cancelados, que solo existe en la PC.
+//
+// Regla clave: todo pedido cae en EXACTAMENTE una etapa, así ninguno queda
+// invisible. 'Confirmado' es un estado que solo usa la PC (no existe en la
+// app), por eso se agrupa dentro de Pendientes: está aceptado pero todavía
+// sin repartidor.
+
+type Stage = 'Pendiente' | 'Preparando' | 'Entregado' | 'Cancelado';
+
+function orderStage(o: Order): Stage {
+  if (o.driverStatusText === 'Su pedido ha llegado') return 'Entregado';
+  if (o.status === 'Cancelado') return 'Cancelado';
+  // Si ya tiene conductor asignado está en preparación, aunque el status haya
+  // quedado en 'Confirmado' por haberse confirmado después de asignar.
+  if (o.status === 'Reparto' || o.driverTag !== '') return 'Preparando';
+  return 'Pendiente'; // incluye 'Pendiente', 'Confirmado' y vacío
+}
+
+// ── Conductores ────────────────────────────────────────────────────────────
+// Los 3 slots son los mismos que en el panel "Conductores" y en la app móvil:
+// la app del conductor filtra sus pedidos por driverTag == 'Driver #<slot>'.
+
+const DRIVER_SLOTS = [
+  { n: 1, tag: 'Driver #1', color: '#7B1FA2' },
+  { n: 2, tag: 'Driver #2', color: '#1565C0' },
+  { n: 3, tag: 'Driver #3', color: '#00695C' },
+];
+
+interface DriverInfo {
+  n: number;
+  tag: string;
+  color: string;
+  name: string;   // nombre real del conductor asignado a ese slot
+  active: boolean;
+}
+
+function useDrivers(): DriverInfo[] {
+  const [names, setNames] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), where('isDriver', '==', true));
+    const unsub = onSnapshot(q, snap => {
+      const map: Record<number, string> = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        const slot = data.driverSlot as number | undefined;
+        if (slot && slot >= 1 && slot <= 3) {
+          map[slot] = data.display_name || data.email || '';
+        }
+      });
+      setNames(map);
+    });
+    return () => unsub();
+  }, []);
+
+  return DRIVER_SLOTS.map(s => ({
+    ...s,
+    name: names[s.n] ?? '',
+    active: Boolean(names[s.n]),
+  }));
+}
+
+// ── Asignar conductor ──────────────────────────────────────────────────────
+// Mismo efecto que en la app: status → 'Reparto' y driverStatusText → 'En
+// preparación', para que el pedido aparezca en el panel del conductor.
+
+function AsignarConductor({ order, drivers }: { order: Order; drivers: DriverInfo[] }) {
+  const asignado = order.driverTag !== '';
+  const [busy, setBusy] = useState('');
+  const [abierto, setAbierto] = useState(!asignado);
+
+  const actual = drivers.find(d => d.tag === order.driverTag);
+
+  async function asignar(d: DriverInfo) {
+    if (busy) return;
+    if (!d.active && !window.confirm(
+      `${d.tag} no tiene ningún conductor asignado en la sección Conductores.\n\n` +
+      `Si asignas el pedido a este slot, nadie lo verá en la app hasta que asignes ` +
+      `un conductor ahí. ¿Continuar de todos modos?`
+    )) return;
+
+    setBusy(d.tag);
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        driverTag: d.tag,
+        status: 'Reparto',
+        driverStatusText: 'En preparación',
+      });
+      setAbierto(false);
+    } catch (e) {
+      alert('Error al asignar conductor: ' + e);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <div className="px-5 pb-3 no-print">
+      <div className="rounded-xl p-3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-xs font-semibold" style={{ color: '#475569' }}>
+            🚚 {asignado ? 'Conductor asignado' : 'Asignar a repartidor'}
+          </span>
+          {asignado && (
+            <button
+              onClick={() => setAbierto(o => !o)}
+              className="text-xs font-semibold"
+              style={{ color: '#2E7D32' }}
+            >
+              {abierto ? 'Cerrar' : 'Cambiar conductor'}
+            </button>
+          )}
+        </div>
+
+        {asignado && !abierto && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-xs font-bold px-2.5 py-1 rounded-full text-white"
+              style={{ background: actual?.color ?? '#6B7280' }}
+            >
+              {order.driverTag}
+            </span>
+            <span className="text-xs font-medium" style={{ color: '#334155' }}>
+              {actual?.name || 'Slot sin conductor asignado'}
+            </span>
+            <span className="text-xs" style={{ color: '#94A3B8' }}>
+              · {order.driverStatusText || 'En preparación'}
+            </span>
+          </div>
+        )}
+
+        {abierto && (
+          <>
+            <div className="flex gap-2">
+              {drivers.map(d => {
+                const esActual = d.tag === order.driverTag;
+                return (
+                  <button
+                    key={d.n}
+                    onClick={() => asignar(d)}
+                    disabled={busy !== ''}
+                    className="flex-1 py-2 px-2 rounded-lg text-white transition-opacity"
+                    style={{
+                      background: d.color,
+                      opacity: busy && busy !== d.tag ? 0.45 : d.active ? 1 : 0.6,
+                      outline: esActual ? `2px solid ${d.color}` : 'none',
+                      outlineOffset: 2,
+                    }}
+                  >
+                    <div className="text-xs font-bold">
+                      {busy === d.tag ? 'Asignando...' : d.tag}
+                    </div>
+                    <div className="text-[10px] truncate" style={{ opacity: 0.85 }}>
+                      {d.active ? d.name : 'sin conductor'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] mt-2 leading-snug" style={{ color: '#94A3B8' }}>
+              Al asignar, el pedido pasa a <b>En reparto · En preparación</b> y le aparece
+              al conductor en su app.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Payment chip ───────────────────────────────────────────────────────────
@@ -462,8 +641,11 @@ function ConfirmarModal({ order, onClose }: { order: Order; onClose: () => void 
           confirmedUnitPrice: calcPrice(item, String(g)),
         });
       }
+      // OJO: confirmar NO toca 'status'. La app solo conoce Pendiente /
+      // Reparto / entregado; si le escribíamos 'Confirmado' el pedido se caía
+      // de todas las pestañas, aquí y en el teléfono. La confirmación se marca
+      // con confirmedAt/confirmedTotal, que la app ignora sin romperse.
       await updateDoc(doc(db, 'orders', order.id), {
-        status: 'Confirmado',
         confirmedTotal,
         confirmedSubtotal,
         confirmedAt: serverTimestamp(),
@@ -706,22 +888,28 @@ function CancelarModal({ order, onClose }: { order: Order; onClose: () => void }
 
 function OrderCard({
   order,
+  drivers,
   onPrint,
   onConfirmar,
   onCancelar,
   onDelete,
 }: {
   order: Order;
+  drivers: DriverInfo[];
   onPrint: () => void;
   onConfirmar: () => void;
   onCancelar: () => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const sc = statusColor(order.status, order.driverStatusText);
-  const isConfirmado = order.status === 'Confirmado';
-  const isCancelado = order.status === 'Cancelado';
-  const isEntregado = order.driverStatusText === 'Su pedido ha llegado';
+  const sc = statusColor(order);
+  const stage = orderStage(order);
+  const isCancelado = stage === 'Cancelado';
+  const isEntregado = stage === 'Entregado';
+  const cerrado = isCancelado || isEntregado;
+  const confirmado = estaConfirmado(order);
+  // El total confirmado sigue siendo el bueno aunque el pedido ya pase a Reparto.
+  const totalMostrado = order.confirmedTotal ?? order.total;
 
   return (
     <div
@@ -768,9 +956,9 @@ function OrderCard({
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <div className="text-2xl font-extrabold" style={{ color: isCancelado ? '#9CA3AF' : '#2E7D32' }}>
-              {fmtMoney(isConfirmado && order.confirmedTotal != null ? order.confirmedTotal : order.total)}
+              {fmtMoney(totalMostrado)}
             </div>
-            {isConfirmado && order.confirmedTotal != null && Math.abs(order.confirmedTotal - order.total) > 0.01 && (
+            {order.confirmedTotal != null && Math.abs(order.confirmedTotal - order.total) > 0.01 && (
               <div className="text-xs line-through" style={{ color: '#9CA3AF' }}>{fmtMoney(order.total)}</div>
             )}
           </div>
@@ -778,7 +966,7 @@ function OrderCard({
 
         {/* Action buttons */}
         <div className="ml-4 flex flex-col gap-2 flex-shrink-0 no-print">
-          {!isConfirmado && !isCancelado && !isEntregado && (
+          {!confirmado && !cerrado && (
             <button
               onClick={onConfirmar}
               className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
@@ -846,6 +1034,11 @@ function OrderCard({
         </div>
       </div>
 
+      {/* Asignar conductor — desde que el pedido queda confirmado */}
+      {(confirmado || order.driverTag !== '') && !cerrado && (
+        <AsignarConductor order={order} drivers={drivers} />
+      )}
+
       {/* Items toggle */}
       <div className="border-t" style={{ borderColor: '#F3F4F6' }}>
         <button
@@ -908,8 +1101,8 @@ function OrderCard({
 const FILTERS = [
   { key: 'todos', label: 'Todos' },
   { key: 'Pendiente', label: 'Pendientes' },
-  { key: 'Reparto', label: 'En Reparto' },
-  { key: 'entregado', label: 'Entregados' },
+  { key: 'Preparando', label: 'Preparando' },
+  { key: 'Entregado', label: 'Entregados' },
   { key: 'Cancelado', label: 'Cancelados' },
 ];
 
@@ -921,6 +1114,7 @@ export default function PedidosPage() {
   const [confirmarOrder, setConfirmarOrder] = useState<Order | null>(null);
   const [cancelarOrder, setCancelarOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const drivers = useDrivers();
 
   const loadItems = useCallback(async (orderId: string): Promise<OrderItem[]> => {
     const snap = await getDocs(collection(db, 'orders', orderId, 'ordersitems'));
@@ -1041,10 +1235,7 @@ export default function PedidosPage() {
   }
 
   const filtered = orders.filter(o => {
-    if (filter === 'entregado') return o.driverStatusText === 'Su pedido ha llegado';
-    if (filter === 'Reparto') return o.status === 'Reparto' && o.driverStatusText !== 'Su pedido ha llegado';
-    if (filter !== 'todos') return o.status === filter;
-    return true;
+    return filter === 'todos' || orderStage(o) === filter;
   }).filter(o => {
     if (!search) return true;
     const s = search.toLowerCase();
@@ -1055,13 +1246,13 @@ export default function PedidosPage() {
     );
   });
 
-  const counts = {
+  // Se cuenta con la misma función que filtra, así las pestañas siempre suman
+  // el total y ningún pedido se queda fuera de todas.
+  const counts: Record<string, number> = {
     todos: orders.length,
-    Pendiente: orders.filter(o => o.status === 'Pendiente').length,
-    Reparto: orders.filter(o => o.status === 'Reparto' && o.driverStatusText !== 'Su pedido ha llegado').length,
-    entregado: orders.filter(o => o.driverStatusText === 'Su pedido ha llegado').length,
-    Cancelado: orders.filter(o => o.status === 'Cancelado').length,
-  } as Record<string, number>;
+    Pendiente: 0, Preparando: 0, Entregado: 0, Cancelado: 0,
+  };
+  orders.forEach(o => { counts[orderStage(o)]++; });
 
   return (
     <div className="p-6 no-print">
@@ -1155,6 +1346,7 @@ export default function PedidosPage() {
           <OrderCard
             key={o.id}
             order={o}
+            drivers={drivers}
             onPrint={() => setPrintOrder(o)}
             onConfirmar={() => setConfirmarOrder(o)}
             onCancelar={() => setCancelarOrder(o)}
